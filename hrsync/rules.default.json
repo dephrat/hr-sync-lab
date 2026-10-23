@@ -1,0 +1,95 @@
+{
+  "locations": {
+    "Toronto, ON": {
+      "country": "CAN",
+      "customCategory": "ON"
+    },
+    "Minneapolis, MN": {
+      "country": "USA",
+      "state": "MN"
+    },
+    "New York, NY": {
+      "country": "USA",
+      "state": "NY"
+    },
+    "Austin, TX": {
+      "country": "USA",
+      "state": "TX"
+    },
+    "Remote - Canada": {
+      "country": "CAN",
+      "customCategory": "ON"
+    },
+    "Remote - US": {
+      "country": "USA",
+      "state": "MN"
+    }
+  },
+  "profiles": {
+    "Sales_Rep": {
+      "isManager": false
+    },
+    "Sales_Team_Lead": {
+      "isManager": true
+    },
+    "Software_Engineer": {
+      "isManager": false
+    },
+    "Engineering_Manager": {
+      "isManager": true
+    },
+    "HR_Generalist": {
+      "isManager": false
+    },
+    "Finance_Analyst": {
+      "isManager": false
+    },
+    "Warehouse_Associate": {
+      "isManager": false,
+      "customCategory": "WAREHOUSE"
+    },
+    "Warehouse_Supervisor": {
+      "isManager": true,
+      "customCategory": "WAREHOUSE"
+    }
+  },
+  "courses": [
+    {
+      "courseName": "Harassment Prevention (Ontario)",
+      "when": {
+        "country": "CAN",
+        "customCategory": "ON"
+      }
+    },
+    {
+      "courseName": "Harassment Prevention (US Managers)",
+      "when": {
+        "country": "USA",
+        "isManager": true
+      }
+    },
+    {
+      "courseName": "Harassment Prevention (US Employees)",
+      "when": {
+        "country": "USA",
+        "isManager": false
+      }
+    },
+    {
+      "courseName": "Manager Fundamentals",
+      "when": {
+        "isManager": true
+      }
+    },
+    {
+      "courseName": "Data Privacy Essentials",
+      "when": {}
+    },
+    {
+      "courseName": "Workplace Safety (Warehouse)",
+      "when": {
+        "customCategory": "WAREHOUSE"
+      }
+    }
+  ]
+}
