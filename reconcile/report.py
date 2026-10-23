@@ -54,7 +54,7 @@ def build(hris_db, ethena_db, sync_db, now: datetime) -> str:
     conn.row_factory = sqlite3.Row
     for alias, path in (("hris", hris_db), ("ethena", ethena_db), ("sync", sync_db)):
         conn.execute(f"ATTACH DATABASE ? AS {alias}", (str(path),))
-    out = [f"# HR sync reconciliation — {stamp}"]
+    out = [f"# HR sync reconciliation, {stamp}"]
     for name, title in SECTIONS:
         if name == "stale_enrollments":
             headers, rows = _stale_enrollments(conn, queries)

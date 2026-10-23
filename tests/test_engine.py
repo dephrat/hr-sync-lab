@@ -6,11 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ethena.app import create_app
-from ethena.db import connect
-from ethena.seed import seed
 from hris.app import create_app as create_hris
-from hris.db import connect as hris_connect
-from hris.seed import seed as hris_seed
+from hrsync.seeding import seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, RateLimited, WorkdayClient
 
@@ -20,12 +17,7 @@ WM = "job_changes.completed_from"
 
 @pytest.fixture
 def env(tmp_path):
-    h = hris_connect(tmp_path / "hris.db")
-    hris_seed(h)
-    e = connect(tmp_path / "ethena.db")
-    facts = seed(e, h)
-    e.close()
-    h.close()
+    facts = seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
     hc = TestClient(create_hris(tmp_path / "hris.db"))
     ec = TestClient(create_app(tmp_path / "ethena.db"))
     ec.auth = ("anyone", "test-key")
@@ -67,14 +59,20 @@ def post_change(env, worker_id, **extra):
 
 
 def drifted_engineer(env):
-    """A non-manager Software_Engineer at a rules-known location who has a learner."""
-    skip = {*env["facts"]["absent_workers"], "W-1042"}
+    """A non-manager Software_Engineer at a rules-known location who has a learner and no
+    seeded job change."""
+    skip = {*env["facts"]["absent_workers"], "W-1042", *planned(env),
+            *env["facts"]["country_mismatch_workers"]}
     for w in (f"W-{1001 + i}" for i in range(100)):
         wk = env["hris"].get_worker(w)
         if (w not in skip and wk["jobProfile"]["id"] == "Software_Engineer"
                 and wk["location"]["descriptor"] in env["rules"].locations):
             return w
     raise AssertionError("no suitable engineer in seed")
+
+
+def planned(env):
+    return [p["worker_id"] for p in env["facts"]["plans"]]
 
 
 def promote(env, wid):
@@ -125,8 +123,7 @@ def test_vancouver_transfer_is_queued(env):
 
 
 def test_duplicate_email_is_queued(env):
-    post_change(env, "W-1042")
-    run(env)
+    run(env)  # the seed plans a change for W-1042
     assert [w for w, _ in queue(env, "AMBIGUOUS_LEARNER")] == ["W-1042"]
 
 
@@ -171,7 +168,7 @@ def test_rate_limit_stops_without_advancing_watermark(env):
         return orig(lid, body)
 
     # Seeded learners already match HRIS, so add drift: three promotions to a manager profile.
-    skip = {*env["facts"]["absent_workers"], "W-1042"}
+    skip = {*env["facts"]["absent_workers"], "W-1042", *planned(env)}
     promoted = [w for w in (f"W-{1001 + i}" for i in range(100)) if w not in skip
                 and not env["hris"].get_worker(w)["isManager"]][:3]
     for i, wid in enumerate(promoted):
@@ -243,3 +240,39 @@ def test_enrollment_missing_is_queued(env):
     rows = env["db"].execute("SELECT detail FROM review_queue WHERE reason='ENROLLMENT_MISSING'"
                              " AND status='open'").fetchall()
     assert rows and all("Nonexistent Campaign" in d for (d,) in rows)
+
+
+def bucket_total(s):
+    return s.skipped + s.queued + s.created + s.terminated + s.patched + s.ok + s.failed
+
+
+def test_first_run_patches_the_promotion(env):
+    plan = next(p for p in env["facts"]["plans"] if p["reason"] == "Promotion"
+                and p["fields"]["job_profile"] == "Sales_Team_Lead")
+    wid = plan["worker_id"]
+    email = env["hris"].get_worker(wid)["primaryWorkEmail"]
+    (before,) = env["learning"].find_learners_by_email(email)
+    assert before["isManager"] is False and before["customCategory"] == "ON"
+    s = run(env)
+    assert s.patched >= 1
+    lid = learner_for(env, wid)
+    assert env["learning"].get_learner(lid)["isManager"] is True
+    names = {x["campaignName"] for x in env["learning"].campaigns_for_learner(lid)}
+    assert {"Manager Fundamentals", "Harassment Prevention (Ontario)"} <= names
+
+
+def test_first_run_fixes_flipped_country(env):
+    plan = next(p for p in env["facts"]["plans"] if p["flip_country"])
+    run(env)
+    detail = env["db"].execute(
+        "SELECT detail FROM audit WHERE worker_id=? AND action='patch_learner' AND outcome='ok'",
+        (plan["worker_id"],)).fetchone()[0]
+    assert "country" in json.loads(detail)
+
+
+def test_summary_buckets_sum_to_changes_seen(env):
+    s1 = run(env)
+    assert s1.changes_seen == 12 and bucket_total(s1) == 12
+    post_change(env, env["facts"]["absent_workers"][0])
+    s2 = run(env)
+    assert s2.changes_seen >= 1 and bucket_total(s2) == s2.changes_seen

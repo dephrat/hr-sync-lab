@@ -29,7 +29,9 @@ uv run hrsync resolve 7 --skip --note "contractor, no training needed"
 uv run hrsync report           # drift report, printed and written to data/report.md
 ```
 
-`run` exits 0 when every change was handled (queued counts as handled) and 1 when any step failed. `resolve` exits 2 when the item does not exist or is not open, or when the learner id is unknown to Ethena.
+The summary has `run_id`, `changes_seen` and seven buckets: `patched`, `created`, `terminated`, `queued`, `skipped`, `failed`, `ok`. Each change counts in exactly one bucket, its final outcome, so the buckets add up to `changes_seen`. A change that created a learner and was then queued counts as `queued`. `ok` means the learner already had the right attributes and enrollment was verified.
+
+`run` exits 0 when every change was handled (queued counts as handled) and 1 when any step failed or a mock could not be reached (it prints `cannot reach ...`, no traceback). `resolve` exits 2 when the item does not exist or is not open, when the learner id is unknown to Ethena, or when a mock could not be reached.
 
 ## Schedule
 
@@ -53,7 +55,7 @@ Each open item names a worker, a job change and a reason. A queued change is not
 | `NO_LEARNER_MATCH` | No Ethena learner has the worker's email, and the sync was told not to create one (`--no-create`), or the change is a termination for someone never in Ethena. | If the person exists in Ethena under another email, map them with `--map-learner`. If it is a termination with no learner, `--skip`. Otherwise ask Enablement to create the learner, then map them with `--map-learner`. A later run without `--no-create` does not pick the change up again, because it is already queued. |
 | `ENROLLMENT_MISSING` | Attributes were written, but Ethena did not enroll the person in every campaign the rules expect (the detail names them). Usually a campaign is inactive or its audience in Ethena differs from the rules table. | Send the detail to Enablement to check the campaign's status and audience. Once fixed, `--map-learner` with the same learner id to recheck. |
 
-`--map-learner` saves the worker-to-learner mapping, closes the item as resolved and reprocesses that one job change. `--skip` closes it without touching Ethena. Both record the note in the `resolution` column.
+`--map-learner` saves the worker-to-learner mapping, closes the item as resolved and reprocesses that one job change. `--skip` closes it without touching Ethena. Both record the note in the `resolution` column. If the reprocessed change ends up `queued` or `failed` (for example a new `UNKNOWN_LOCATION`), `resolve` keeps the mapping, prints `item N resolved (mapping saved) but change X is now: queued (...)` and exits 1, so check `hrsync queue` for the new item.
 
 To find a worker's learner id: `sqlite3 data/sync.db "SELECT learner_id FROM id_map WHERE worker_id='W-1040'"`, or ask the assistant to call `get_worker`. If there is no row, search Ethena for the worker's email.
 

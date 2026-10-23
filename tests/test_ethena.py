@@ -2,22 +2,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ethena.app import create_app
-from ethena.db import connect
-from ethena.seed import seed
-from hris.db import connect as hris_connect
-from hris.seed import seed as hris_seed
+from hrsync.seeding import seed_all
 
 AUTH = ("anyone", "test-key")
 
 
 @pytest.fixture
 def client(tmp_path):
-    h = hris_connect(tmp_path / "hris.db")
-    hris_seed(h)
-    e = connect(tmp_path / "ethena.db")
-    seed(e, h)
-    e.close()
-    h.close()
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
     c = TestClient(create_app(tmp_path / "ethena.db"))
     c.auth = AUTH
     return c

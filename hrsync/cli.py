@@ -21,6 +21,20 @@ def _build_clients(settings: Settings) -> tuple[WorkdayClient, EthenaClient]:
     return WorkdayClient(hris), EthenaClient(ethena)
 
 
+def _unreachable(settings: Settings, hris, learning) -> str | None:
+    """A 'cannot reach' message when either mock is down (usually: `hrsync serve` not running)."""
+    for name, url, probe in (("the HRIS", settings.hris_url,
+                              lambda: hris.job_changes_since("2999-01-01T00:00:00Z")),
+                             ("Ethena", settings.ethena_url, learning.list_campaigns)):
+        try:
+            probe()
+        except httpx.HTTPError as exc:
+            return f"cannot reach {name} at {url}: {exc}"
+        except HrSyncClientError:
+            pass
+    return None
+
+
 def _table(rows: list[tuple], headers: tuple) -> str:
     cells = [tuple(str(c) for c in r) for r in rows]
     widths = [max(len(h), *(len(r[i]) for r in cells)) for i, h in enumerate(headers)]
@@ -29,23 +43,17 @@ def _table(rows: list[tuple], headers: tuple) -> str:
 
 
 def _seed(settings: Settings, args) -> int:
-    from ethena import db as ethena_db, seed as ethena_seed
-    from hris import db as hris_db, seed as hris_seed
+    import sqlite3
 
-    for p in (settings.hris_db, settings.ethena_db, settings.sync_db):
-        Path(p).unlink(missing_ok=True)
-        Path(p).parent.mkdir(parents=True, exist_ok=True)
-    h = hris_db.connect(settings.hris_db)
-    hris_seed.seed(h)
-    e = ethena_db.connect(settings.ethena_db)
-    ethena_seed.seed(e, h)
-    e.commit()
-    h.commit()
-    n = lambda c, t: c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-    print(f"seeded {n(h, 'workers')} workers, {n(e, 'learners')} learners, "
-          f"{n(h, 'job_changes')} job changes")
-    h.close()
-    e.close()
+    from hrsync.seeding import seed_all
+
+    Path(settings.sync_db).unlink(missing_ok=True)
+    Path(settings.sync_db).parent.mkdir(parents=True, exist_ok=True)
+    seed_all(settings.hris_db, settings.ethena_db)
+    n = lambda path, t: sqlite3.connect(path).execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+    print(f"seeded {n(settings.hris_db, 'workers')} workers, "
+          f"{n(settings.ethena_db, 'learners')} learners, "
+          f"{n(settings.hris_db, 'job_changes')} job changes")
     return 0
 
 
@@ -72,6 +80,9 @@ def _serve(settings: Settings, args) -> int:
 def _run(settings: Settings, args) -> int:
     hris, learning = _build_clients(settings)
     conn = store.connect(settings.sync_db)
+    if (err := _unreachable(settings, hris, learning)) is not None:
+        print(err, file=sys.stderr)
+        return 1
     summary = engine.run(hris, learning, rules.load(settings.rules_path), conn,
                          create_missing=not args.no_create)
     if args.json:
@@ -112,16 +123,28 @@ def _resolve(settings: Settings, args) -> int:
         print(f"item {args.id} skipped")
         return 0
     hris, learning = _build_clients(settings)
+    if (err := _unreachable(settings, hris, learning)) is not None:
+        print(err, file=sys.stderr)
+        return 2
     try:
         res = engine.resolve_with_learner(hris, learning, rules.load(settings.rules_path), conn,
                                           args.id, args.map_learner, now, args.note)
-    except HrSyncClientError as exc:
+    except (HrSyncClientError, httpx.HTTPError) as exc:
         if conn.execute("SELECT status FROM review_queue WHERE id=?",
                         (args.id,)).fetchone()[0] == "resolved":
             print(f"mapped, but could not reload change {change_id}: {exc}", file=sys.stderr)
         else:
             print(f"cannot map to {args.map_learner}: {exc}", file=sys.stderr)
         return 2
+    if res["outcome"] in ("queued", "failed"):
+        why = conn.execute("SELECT reason || ' ' || detail FROM review_queue WHERE change_id=?"
+                           " AND status='open' ORDER BY id DESC", (change_id,)).fetchone()
+        if why is None:
+            why = conn.execute("SELECT action || ': ' || detail FROM audit WHERE change_id=?"
+                               " ORDER BY id DESC", (change_id,)).fetchone()
+        print(f"item {args.id} resolved (mapping saved) but change {change_id} is now: "
+              f"{res['outcome']} ({why[0] if why else 'see audit'})", file=sys.stderr)
+        return 1
     print(f"item {args.id} resolved; change {change_id}: {res['outcome']}")
     return 0
 

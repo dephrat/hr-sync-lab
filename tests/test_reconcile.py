@@ -6,11 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ethena.app import create_app
-from ethena.db import connect
-from ethena.seed import seed
 from hris.app import create_app as create_hris
-from hris.db import connect as hris_connect
-from hris.seed import seed as hris_seed
+from hrsync.seeding import seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, WorkdayClient
 from reconcile import report
@@ -23,12 +20,7 @@ SECTIONS = ["Overdue training by department", "In HRIS, not in Ethena",
 
 @pytest.fixture
 def env(tmp_path):
-    h = hris_connect(tmp_path / "hris.db")
-    hris_seed(h)
-    e = connect(tmp_path / "ethena.db")
-    seed(e, h)
-    e.close()
-    h.close()
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
     hc = TestClient(create_hris(tmp_path / "hris.db"))
     ec = TestClient(create_app(tmp_path / "ethena.db"))
     ec.auth = ("anyone", "test-key")
@@ -50,7 +42,8 @@ def count(md, title):
 
 def test_seeded_drift_before_sync(env):
     md = build(env)
-    assert md.startswith("# HR sync reconciliation")
+    assert md.startswith("# HR sync reconciliation, 2026-10-23T12:00:00Z")
+    assert count(md, "Overdue training by department") >= 1
     for title in SECTIONS:
         assert f"## {title}\n" in md
     assert count(md, "Terminated in HRIS but active in Ethena") == 1

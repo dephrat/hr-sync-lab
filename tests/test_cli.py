@@ -87,3 +87,36 @@ def test_resolve_skip(env):
     assert cli.main(["resolve", str(item_id), "--skip", "--note", "n/a"]) == 0
     assert conn.execute("SELECT status, resolution FROM review_queue WHERE id=?",
                         (item_id,)).fetchone() == ("skipped", "skipped:n/a")
+
+
+def test_resolve_exits_1_when_rerun_is_queued(env, tmp_path, monkeypatch, capsys):
+    cli.main(["run"])
+    conn, (item_id, wid, _) = open_item(env, "AMBIGUOUS_LEARNER")
+    location = env["hris"].get_worker(wid)["location"]["descriptor"]
+    data = json.loads(RULES.read_text())
+    data["locations"].pop(location, None)
+    narrow = tmp_path / "rules.narrow.json"
+    narrow.write_text(json.dumps(data))
+    monkeypatch.setenv("RULES_PATH", str(narrow))
+    email = env["hris"].get_worker(wid)["primaryWorkEmail"]
+    lid = env["learning"].find_learners_by_email(email)[0]["id"]
+    capsys.readouterr()
+    assert cli.main(["resolve", str(item_id), "--map-learner", lid]) == 1
+    err = capsys.readouterr().err
+    assert "mapping saved" in err and "queued" in err and "UNKNOWN_LOCATION" in err
+    assert store.mapped_learner(conn, wid) == lid
+
+
+def test_unreachable_mocks_exit_cleanly(env, monkeypatch, capsys):
+    import httpx
+    down = lambda s: (WorkdayClient(httpx.Client(base_url="http://127.0.0.1:9")),
+                      EthenaClient(httpx.Client(base_url="http://127.0.0.1:9")))
+    monkeypatch.setattr(cli, "_build_clients", down)
+    assert cli.main(["run"]) == 1
+    assert "cannot reach the HRIS" in capsys.readouterr().err
+    conn = store.connect(env["db"])
+    store.queue_item(conn, "JC-x", "W-1001", "NO_LEARNER_MATCH", "t", "2026-10-23T00:00:00Z")
+    conn.commit()
+    item_id = conn.execute("SELECT MAX(id) FROM review_queue").fetchone()[0]
+    assert cli.main(["resolve", str(item_id), "--map-learner", "L100001"]) == 2
+    assert "cannot reach" in capsys.readouterr().err

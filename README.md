@@ -27,12 +27,14 @@ One `hrsync run`:
  hris/  mock Workday  :8001 ----+                +---- ethena/  mock Ethena  :8002
    data/hris.db                 |                |       data/ethena.db
                                 v                v
-                     hrsync/  clients -> engine -> store
-                              rules table   CLI      data/sync.db
-                                                     (watermark, id_map, audit, review_queue)
-                                  |                         |
+                     hrsync/  engine (rules table, CLI)
+                                  |          |
+                               clients     store  data/sync.db
+                                  |          |    (watermark, id_map, audit, review_queue)
+                                  +----+-----+            |
+                                       |                  |
               mcp_server/  7 tools over stdio      reconcile/  SQL drift report
-              (Claude Desktop)                     (attaches all three .db files)
+              (Claude Desktop; uses clients+store) (attaches all three .db files)
 ```
 
 ## Quickstart
@@ -48,15 +50,19 @@ uv run hrsync serve     # leave running: Workday mock on :8001, Ethena mock on :
 In a second terminal:
 
 ```
-uv run hrsync run                       # changes_seen 12, terminated 1, queued 2
-uv run hrsync queue                     # two UNKNOWN_LOCATION items for Vancouver, BC
+uv run hrsync report                    # before the first run: one terminated-but-active row
+uv run hrsync run                       # changes_seen 12, patched 5, created 0, terminated 1,
+                                        #   queued 3, skipped 0, failed 0, ok 3
+uv run hrsync queue                     # two UNKNOWN_LOCATION (Vancouver, BC), one AMBIGUOUS_LEARNER (W-1042)
 uv run hrsync resolve 1 --skip --note "location not in rules yet"
 uv run hrsync report                    # drift report, also written to data/report.md
 ```
 
-`resolve <id> --map-learner <learner id>` is the other way to close an item: it saves the mapping and reprocesses that change. `run` exits 1 if any step failed; `resolve` exits 2 if the item is missing or closed, or the learner is unknown.
+Run `hrsync report` before and after the first `run` to see the terminated-but-active row disappear. The first run's patches include the seed's version of Priya: Chloe Chen (`W-1038`), a Toronto `Sales_Rep` promoted to `Sales_Team_Lead`, whose learner gets `isManager` true and is then enrolled in Manager Fundamentals next to Harassment Prevention (Ontario). Each change lands in exactly one summary bucket, so the seven counts add up to `changes_seen`.
 
-The seed plants problems on purpose: `Vancouver, BC` is not in the rules table, worker `W-1042`'s email is on two learners, 6 workers are missing from Ethena, 3 learners have the wrong country, and one terminated worker is still active in Ethena until the first run.
+`resolve <id> --map-learner <learner id>` is the other way to close an item: it saves the mapping and reprocesses that change. `run` exits 1 if any step failed; `resolve` exits 2 if the item is missing or closed, the learner is unknown, or a mock is unreachable, and exits 1 if the mapping was saved but the rerun change ended up queued or failed. Both print `cannot reach ...` instead of a traceback when `serve` is not running.
+
+The seed plants problems on purpose: `Vancouver, BC` is not in the rules table, worker `W-1042`'s email is on two learners and that worker has a seeded change, 6 workers are missing from Ethena, 3 learners have the wrong country (one of them has a seeded change, so the first run patches its `country`), 2 enrollments are overdue, and one terminated worker is still active in Ethena until the first run. Ethena is seeded from the workers as they were before the 12 job changes, so the first run has real drift to fix.
 
 ## Use from Claude Desktop
 
@@ -79,7 +85,7 @@ Start the mock systems (`uv run hrsync seed && uv run hrsync serve`), then add t
 }
 ```
 
-Five tools are read-only (`get_worker`, `get_learner_status`, `get_audit_trail`, `list_queue`, `explain_gap`); `resolve_queue_item` and `rerun_sync` write and need `confirm=true`. `explain_gap` checks enrollment, the open queue, the rules and the audit log and answers in one sentence, for example why a worker is not in a given campaign.
+Five tools are read-only (`get_worker`, `get_learner_status`, `get_audit_trail`, `list_queue`, `explain_gap`); `resolve_queue_item` and `rerun_sync` write and do nothing unless called with `confirm=true`. That flag makes the write a separate, explicit call whose arguments show the intent; the person approves it in Claude Desktop's own tool-approval prompt. The model fills in the flag itself, so it is not proof that a person approved. `explain_gap` checks enrollment, the open queue, the rules and the audit log and answers in one sentence, for example why a worker is not in a given campaign.
 
 ## Why mocks
 
@@ -92,7 +98,7 @@ ADP and payroll, n8n (the queue notifications and review loop would be the n8n p
 ## Tests
 
 ```
-uv run pytest    # 54 tests
+uv run pytest    # 59 tests
 ```
 
 ## Docs

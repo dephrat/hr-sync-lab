@@ -15,6 +15,11 @@ ATTR_KEYS = ("isManager", "country", "state", "customCategory", "department")
 
 @dataclass
 class RunSummary:
+    """Counts for one run. Each change lands in exactly one bucket, named by the final
+    outcome process_change returned for it, so skipped + queued + created + terminated +
+    patched + ok + failed == changes_seen. A change that created a learner and was then
+    queued (for example ENROLLMENT_MISSING) counts as queued, not created. `ok` means the
+    learner's attributes were already correct and enrollment verified."""
     run_id: str
     changes_seen: int = 0
     patched: int = 0
@@ -23,6 +28,7 @@ class RunSummary:
     queued: int = 0
     skipped: int = 0
     failed: int = 0
+    ok: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -133,6 +139,8 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
         audit(lid, exc.action, "failed", str(exc))
         return "failed"
     finally:
+        # Partial writes (a mapping, a patch) are safe to commit: the change has no terminal
+        # audit row yet, so the next run processes it again from the start.
         store_conn.commit()
 
 
@@ -157,8 +165,7 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         if outcome == "failed":
             summary.failed += 1
             return summary
-        if outcome in ("patched", "created", "terminated", "queued", "skipped"):
-            setattr(summary, outcome, getattr(summary, outcome) + 1)
+        setattr(summary, outcome, getattr(summary, outcome) + 1)
     if changes:
         store.set_watermark(store_conn, max(c["completedDate"] for c in changes))
         store_conn.commit()

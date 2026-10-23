@@ -10,11 +10,8 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from ethena.app import create_app
-from ethena.db import connect
-from ethena.seed import seed
 from hris.app import create_app as create_hris
-from hris.db import connect as hris_connect
-from hris.seed import seed as hris_seed
+from hrsync.seeding import seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, WorkdayClient
 from mcp_server import tools
@@ -24,12 +21,7 @@ RULES = Path(engine.__file__).parent / "rules.default.json"
 
 
 def seed_dbs(tmp_path):
-    h = hris_connect(tmp_path / "hris.db")
-    hris_seed(h)
-    e = connect(tmp_path / "ethena.db")
-    seed(e, h)
-    e.close()
-    h.close()
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
 
 
 @pytest.fixture

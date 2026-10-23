@@ -13,7 +13,14 @@ LAST_NAMES = ["Tremblay", "Nguyen", "Okafor", "Silva", "Kowalski", "Haddad", "Pa
               "Lindqvist", "Moreau", "Chen", "Rossi", "Abara", "Fischer", "Park", "Dubois"]
 
 
-def seed(conn, n_workers=100, rng_seed=7) -> None:
+PROMOTED_PROFILE = "Sales_Team_Lead"
+DUP_WORKER = "W-1042"  # ethena.seed puts this worker's email on two learners
+
+
+def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
+    """Insert the workers in their pre-change state and return the 12 planned job changes
+    (apply them with apply_changes). Callers that need the pre-change state (ethena.seed)
+    run between the two calls."""
     rng = random.Random(rng_seed)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     for i in range(n_workers):
@@ -30,32 +37,61 @@ def seed(conn, n_workers=100, rng_seed=7) -> None:
              rng.choice(LOCATIONS), PROFILE_DEPARTMENT[profile], f"P-{1001 + i}", hire))
     conn.commit()
 
-    # 12 completed changes on distinct workers, spread over the last ~29 days.
-    ids = rng.sample([f"W-{1001 + i}" for i in range(n_workers)], 12)
+    workers = conn.execute("SELECT id, job_profile, location FROM workers ORDER BY id").fetchall()
+    # The promotion is the README's story: a Toronto Sales_Rep becomes a Sales_Team_Lead.
+    promoted = next(w["id"] for w in workers if w["id"] != DUP_WORKER
+                    and w["job_profile"] == "Sales_Rep" and w["location"] == "Toronto, ON")
+    # The country check: a non-Vancouver worker whose Ethena learner gets the wrong country.
+    pool = [w["id"] for w in workers if w["id"] not in (DUP_WORKER, promoted)]
+    ids = rng.sample(pool, 10)
+    country_check = next(w for w in ids if conn.execute(
+        "SELECT location FROM workers WHERE id=?", (w,)).fetchone()[0] != "Vancouver, BC")
+    ids.remove(country_check)
     plans = [
-        ("Hire", {}),
-        ("Promotion", {"job_profile": "Sales_Team_Lead"}),
-        ("Transfer", {"location": "Vancouver, BC"}),
-        ("Termination", {}),
+        (ids[0], "Hire", {}),
+        (promoted, "Promotion", {"job_profile": PROMOTED_PROFILE}),
+        (ids[1], "Transfer", {"location": "Vancouver, BC"}),
+        (ids[2], "Termination", {}),
+        (DUP_WORKER, "Data_Change", {"business_title": "Senior Associate"}),
+        (country_check, "Data_Change", {"business_title": "Senior Specialist", "_flip": True}),
     ]
-    for _ in range(8):
+    for wid in ids[3:9]:
         reason = rng.choice(["Promotion", "Transfer", "Data_Change"])
         if reason == "Promotion":
-            plans.append((reason, {"job_profile": rng.choice(JOB_PROFILES)}))
+            plans.append((wid, reason, {"job_profile": rng.choice(JOB_PROFILES)}))
         elif reason == "Transfer":
-            plans.append((reason, {"location": rng.choice(LOCATIONS)}))
+            plans.append((wid, reason, {"location": rng.choice(LOCATIONS)}))
         else:
-            plans.append((reason, {"business_title": f"Senior {rng.choice(['Associate', 'Specialist'])}"}))
-    for i, (wid, (reason, fields)) in enumerate(zip(ids, plans)):
+            plans.append((wid, reason, {"business_title": f"Senior {rng.choice(['Associate', 'Specialist'])}"}))
+    out = []
+    for i, (wid, reason, fields) in enumerate(plans):
         completed = now - timedelta(days=29 - i * 2.4)
+        flip = fields.pop("_flip", False)
         if "job_profile" in fields:
             fields["department"] = PROFILE_DEPARTMENT[fields["job_profile"]]
-        if reason == "Hire":
+        out.append({"worker_id": wid, "reason": reason, "fields": fields,
+                    "completed": completed, "flip_country": flip})
+    return out
+
+
+def apply_changes(conn, plans: list[dict]) -> None:
+    """Record and apply the planned job changes (see seed_workers)."""
+    for p in plans:
+        completed, wid = p["completed"], p["worker_id"]
+        if p["reason"] == "Hire":
             conn.execute("UPDATE workers SET hire_date=? WHERE id=?",
                          (completed.date().isoformat(), wid))
         apply_job_change(conn, worker_id=wid, effective_date=completed.date().isoformat(),
-                         reason=reason, completed_date=completed.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                         **fields)
+                         reason=p["reason"],
+                         completed_date=completed.strftime("%Y-%m-%dT%H:%M:%SZ"), **p["fields"])
+
+
+def seed(conn, n_workers=100, rng_seed=7) -> list[dict]:
+    """Workers plus applied changes, for an HRIS on its own. hrsync.seeding.seed_all is the
+    two-system seed that captures Ethena before the changes land."""
+    plans = seed_workers(conn, n_workers, rng_seed)
+    apply_changes(conn, plans)
+    return plans
 
 
 if __name__ == "__main__":

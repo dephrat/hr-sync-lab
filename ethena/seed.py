@@ -1,10 +1,15 @@
 """Seed the mock Ethena from the HRIS workers, with deliberate mismatches for reconciliation.
 
+Run it after hris.seed.seed_workers and before hris.seed.apply_changes (hrsync.seeding does
+this), so learners carry each worker's pre-change attributes and the first sync has work to do.
+
 Mismatches (all deterministic for a given HRIS seed):
-- 6 HRIS workers with no job change are absent from Ethena.
+- 6 HRIS workers with no planned job change are absent from Ethena.
 - W-1042's email is on two learners (its own plus an extra learner "Emma Parker-Dup").
-- 3 learners have country flipped CAN<->USA vs their HRIS location.
+- 3 learners have country flipped CAN<->USA vs their HRIS location: the worker of the planned
+  change marked flip_country plus 2 workers with no change.
 - The HRIS Termination worker's learner is still ACTIVE.
+- 2 enrollments of unchanged learners are past their deadline and not completed (overdue).
 """
 import json
 import random
@@ -34,8 +39,9 @@ CAMPAIGNS = [  # (id, course, name, audience)
 ]
 
 
-def seed(conn, hris_conn, rng_seed=7) -> dict:
-    """Populate Ethena; returns the chosen mismatches (also useful for tests)."""
+def seed(conn, hris_conn, plans=None, rng_seed=7) -> dict:
+    """Populate Ethena; returns the chosen mismatches (also useful for tests). `plans` is the
+    list from hris.seed.seed_workers; without it the HRIS job_changes table is used."""
     rng = random.Random(rng_seed)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     stamp = lambda d: (now + timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -44,13 +50,16 @@ def seed(conn, hris_conn, rng_seed=7) -> dict:
                      (cid, course, name, "ACTIVE", stamp(-90), stamp(275), 30, json.dumps(aud)))
 
     workers = hris_conn.execute("SELECT * FROM workers ORDER BY id").fetchall()
-    changed = {r[0] for r in hris_conn.execute("SELECT DISTINCT worker_id FROM job_changes")}
-    terminated = [r[0] for r in hris_conn.execute(
-        "SELECT w.id FROM workers w JOIN job_changes j ON j.worker_id=w.id"
-        " WHERE j.reason='Termination' ORDER BY w.id")]
+    if plans is None:
+        plans = [{"worker_id": r[0], "reason": r[1], "flip_country": False} for r in
+                 hris_conn.execute("SELECT worker_id, reason FROM job_changes ORDER BY seq")]
+    changed = {p["worker_id"] for p in plans}
+    terminated = sorted(p["worker_id"] for p in plans if p["reason"] == "Termination")
     plain = [w["id"] for w in workers if w["id"] not in changed and w["id"] != DUP_WORKER]
     absent = sorted(rng.sample(plain, 6))
-    flipped = sorted(rng.sample([i for i in plain if i not in absent], 3))
+    forced = [p["worker_id"] for p in plans if p.get("flip_country")]
+    flipped = sorted([*forced, *rng.sample([i for i in plain if i not in absent],
+                                           3 - len(forced))])
 
     learners = {}
     for i, w in enumerate(w for w in workers if w["id"] not in absent):
@@ -76,11 +85,20 @@ def seed(conn, hris_conn, rng_seed=7) -> dict:
     conn.commit()
     for lid in [*learners.values(), dup_id]:
         enroll(conn, lid)
+    overdue_learners = [learners[w] for w in plain if w not in absent and w not in flipped][:2]
+    overdue = []
+    for lid in overdue_learners:
+        ltc = conn.execute("SELECT id FROM enrollments WHERE learner_id=? ORDER BY id LIMIT 1",
+                           (lid,)).fetchone()[0]
+        conn.execute("UPDATE enrollments SET enrolled_at=?, deadline=?,"
+                     " completion_status='PAST_DEADLINE' WHERE id=?", (stamp(-45), stamp(-15), ltc))
+        overdue.append(ltc)
+    conn.commit()
     return {"absent_workers": absent, "duplicate_email": dup_email,
             "duplicate_learner_ids": [learners[DUP_WORKER], dup_id],
             "country_mismatch_workers": flipped,
             "country_mismatch_learner_ids": [learners[w] for w in flipped],
-            "terminated_active_workers": terminated,
+            "terminated_active_workers": terminated, "overdue_enrollment_ids": overdue,
             "terminated_active_learner_ids": [learners[w] for w in terminated if w in learners]}
 
 
