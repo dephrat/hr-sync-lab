@@ -182,8 +182,8 @@ def test_rate_limit_stops_without_advancing_watermark(env):
     assert s.failed == 1
     assert env["db"].execute("SELECT value FROM watermark WHERE key=?", (WM,)).fetchone() is None
     done = {r[0] for r in env["db"].execute(
-        "SELECT change_id FROM audit WHERE outcome != 'failed'"
-        " AND action IN ('patch_learner','terminate_learner','queue')")}
+        "SELECT DISTINCT change_id FROM audit WHERE (action IN ('verify_enrollment',"
+        "'terminate_learner') AND outcome='ok') OR (action='queue' AND outcome='queued')")}
     learning.patch_learner = orig
     s2 = run(env)
     assert s2.failed == 0 and s2.changes_seen == 15

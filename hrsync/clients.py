@@ -24,6 +24,7 @@ class ClientError(HrSyncClientError):
 class HrisClient(Protocol):
     def get_worker(self, worker_id: str) -> dict: ...
     def job_changes_since(self, completed_from: str) -> list[dict]: ...
+    def get_job_change(self, change_id: str) -> dict: ...
 
 
 class LearningClient(Protocol):
@@ -62,6 +63,9 @@ class WorkdayClient:
 
     def get_worker(self, worker_id: str) -> dict:
         return _send(self.http, "GET", f"/workers/{worker_id}").json()
+
+    def get_job_change(self, change_id: str) -> dict:
+        return _send(self.http, "GET", f"/jobChanges/{change_id}").json()
 
     def job_changes_since(self, completed_from: str) -> list[dict]:
         out, offset = [], 0

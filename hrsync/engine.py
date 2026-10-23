@@ -50,17 +50,19 @@ def _step(action, fn, *args):
 
 
 def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
-                   change: dict, run_id: str, now: datetime, create_missing: bool = True) -> str:
+                   change: dict, run_id: str, now: datetime, create_missing: bool = True,
+                   force: bool = False) -> str:
     """Process one job change. Returns one of: skipped, queued, created, terminated, patched,
     ok, failed. Commits on return. A Termination for a worker with no learner is queued
-    NO_LEARNER_MATCH regardless of create_missing."""
+    NO_LEARNER_MATCH regardless of create_missing. `force` reprocesses a change even if a
+    terminal audit row exists (used when a reviewer resolves its queue item)."""
     at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     cid, wid = change["id"], change["worker"]["id"]
     audit = lambda lid, action, outcome, detail: store.audit(
         store_conn, run_id, cid, wid, lid, action, outcome, detail, at)
     lid = None
     try:
-        if store.already_processed(store_conn, cid):
+        if not force and store.already_processed(store_conn, cid):
             audit(None, "skip", "skipped", "already processed")
             return "skipped"
         worker = _step("load_worker", hris.get_worker, wid)
@@ -134,10 +136,14 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
         store_conn.commit()
 
 
+def new_run_id(now: datetime) -> str:
+    return now.strftime("%Y%m%dT%H%M%SZ") + secrets.token_hex(2)
+
+
 def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         now: datetime | None = None, create_missing: bool = True) -> RunSummary:
     now = now or datetime.now(UTC)
-    summary = RunSummary(run_id=now.strftime("%Y%m%dT%H%M%SZ") + secrets.token_hex(2))
+    summary = RunSummary(run_id=new_run_id(now))
     completed_from = store.get_watermark(store_conn) or "1970-01-01T00:00:00Z"
     try:
         changes = hris.job_changes_since(completed_from)

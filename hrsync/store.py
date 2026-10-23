@@ -43,11 +43,10 @@ def map_learner(conn, worker_id: str, learner_id: str, source: str, at: str) -> 
 
 
 def audit(conn, run_id, change_id, worker_id, learner_id, action, outcome, detail, at) -> None:
-    """INSERT OR REPLACE on UNIQUE(run_id, change_id, action): the latest attempt of a step wins.
-    That lets a change that failed be retried (its `failed` row is overwritten) and lets a
-    repeated `skip` for an already-processed change replace the previous skip row."""
+    """Append one audit row. The log is append-only: uniqueness is (run_id, change_id, action),
+    so recording the same step twice in a run raises IntegrityError."""
     conn.execute(
-        "INSERT OR REPLACE INTO audit (run_id, change_id, worker_id, learner_id, action, outcome,"
+        "INSERT INTO audit (run_id, change_id, worker_id, learner_id, action, outcome,"
         " detail, created_at) VALUES (?,?,?,?,?,?,?,?)",
         (run_id, change_id, worker_id, learner_id, action, outcome, detail, at))
 
