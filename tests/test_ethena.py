@@ -31,9 +31,10 @@ def all_learners(client):
             params["cursor"] = cursor
         body = client.get("/v1/learners", params=params).json()
         out += body["data"]
-        cursor = body.get("nextCursor")
-        if not cursor:
+        assert body["limit"] == 30 and "nextCursor" not in body
+        if not body["hasMore"]:
             return out
+        cursor = body["data"][-1]["id"]
 
 
 def campaign_names(client, learner_id):
@@ -99,3 +100,36 @@ def test_modules_mirror_enrollments(client):
     mods = client.get("/v1/learner-training-modules", params={"learnerId": lid}).json()["data"]
     assert len(mods) == len(ltcs) > 0
     assert client.get("/v1/learner-training-campaigns/" + ltcs[0]["id"]).status_code == 200
+
+
+def test_envelope_has_more(client):
+    body = client.get("/v1/learners", params={"limit": 5}).json()
+    assert body["limit"] == 5 and body["hasMore"] is True and len(body["data"]) == 5
+    last = client.get("/v1/training-campaigns", params={"limit": 100}).json()
+    assert last["hasMore"] is False and len(last["data"]) == 6
+
+
+def test_patch_null_on_required_field_is_422(client):
+    lid = all_learners(client)[0]["id"]
+    for field in ("isManager", "name", "email"):
+        r = client.patch(f"/v1/learners/{lid}", json={"id": lid, field: None})
+        assert r.status_code == 422
+        assert set(r.json()) == {"title", "detail"}
+
+
+def test_patch_non_usa_country_clears_state(client):
+    lid = next(x["id"] for x in all_learners(client) if x["state"] == "MN")
+    assert client.patch(f"/v1/learners/{lid}", json={"id": lid, "country": "CAN"}).status_code == 204
+    got = client.get(f"/v1/learners/{lid}").json()
+    assert got["country"] == "CAN" and got["state"] is None
+
+
+def test_format_and_enum_validation(client):
+    lid = all_learners(client)[0]["id"]
+    bad = [{"status": "BOGUS"}, {"country": "ca"}, {"country": "CANADA"}, {"state": "mn"},
+           {"country": "CAN", "state": "ON"}]
+    for b in bad:
+        assert client.patch(f"/v1/learners/{lid}", json={"id": lid, **b}).status_code == 422, b
+        assert client.post("/v1/learners", json={"name": "x", "email": "x@e.com", **b}).status_code == 422, b
+    assert client.patch(f"/v1/learners/{lid}", json={"id": lid, "status": "DEACTIVATED"}).status_code == 422
+    assert client.post("/v1/learners", json={"name": "x", "email": "x@e.com", "status": "DEACTIVATED"}).status_code == 200

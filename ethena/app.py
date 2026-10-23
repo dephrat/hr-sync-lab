@@ -7,12 +7,13 @@ match are left in place (Ethena does not auto-unenroll). TERMINATED learners get
 enrollments. The rule lives in ethena.db.enroll, used here as _enroll.
 """
 import secrets
+from typing import Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ethena.db import connect
 from ethena.db import enroll as _enroll
@@ -21,9 +22,9 @@ from ethena.db import enroll as _enroll
 class LearnerIn(BaseModel):
     name: str | None = None
     email: str | None = None
-    status: str | None = None
-    country: str | None = None
-    state: str | None = None
+    status: Literal["ACTIVE", "DEACTIVATED", "TERMINATED"] | None = None
+    country: str | None = Field(None, pattern=r"^[A-Z]{3}$")
+    state: str | None = Field(None, pattern=r"^[A-Z]{2}$")
     isManager: bool | None = None
     managerLearnerId: str | None = None
     department: str | None = None
@@ -35,6 +36,7 @@ class LearnerIn(BaseModel):
 
 class LearnerPatch(LearnerIn):
     id: str  # Ethena quirk: PATCH body must carry the id
+    status: Literal["ACTIVE", "TERMINATED"] | None = None  # PATCH cannot set DEACTIVATED
 
 
 _FIELDS = {"name": "name", "email": "email", "status": "status", "country": "country",
@@ -70,6 +72,9 @@ def module_json(r) -> dict:
             "status": r["completion_status"], "assignedAt": r["assigned_at"]}
 
 
+_NOT_NULL = {"name", "email", "status", "isManager", "language"}
+
+
 def _error(status, title, detail):
     return JSONResponse({"title": title, "detail": detail}, status_code=status)
 
@@ -100,15 +105,15 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
 
     r = APIRouter(prefix="/v1", dependencies=[Depends(auth)])
 
-    def page(conn, table, where, args, limit, cursor, to_json):
+    def page(conn, table, where, args, limit, cursor, to_json, select="*", alias=""):
+        """Envelope {limit, hasMore, data}; clients continue from data[-1]["id"]."""
         if cursor:
-            where, args = [*where, "id > ?"], [*args, cursor]
-        sql = f"SELECT * FROM {table}" + (" WHERE " + " AND ".join(where) if where else "")
-        rows = conn.execute(sql + " ORDER BY id LIMIT ?", [*args, limit + 1]).fetchall()
+            where, args = [*where, f"{alias}id > ?"], [*args, cursor]
+        sql = f"SELECT {select} FROM {table}" + (" WHERE " + " AND ".join(where) if where else "")
+        rows = conn.execute(sql + f" ORDER BY {alias}id LIMIT ?", [*args, limit + 1]).fetchall()
         more = len(rows) > limit
         rows = rows[:limit]
-        return {"data": [to_json(x) for x in rows],
-                "nextCursor": rows[-1]["id"] if more else None}
+        return {"limit": limit, "hasMore": more, "data": [to_json(x) for x in rows]}
 
     def one(conn, table, id_, label, to_json):
         row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (id_,)).fetchone()
@@ -129,6 +134,8 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
 
     @r.post("/learners")
     def create_learner(body: LearnerIn, conn=Depends(get_conn)):
+        if body.state is not None and body.country != "USA":
+            raise HTTPException(422, "state is only allowed when country is USA")
         n = conn.execute("SELECT COUNT(*) FROM learners").fetchone()[0] + 100001
         while conn.execute("SELECT 1 FROM learners WHERE id=?", (f"L{n:06d}",)).fetchone():
             n += 1
@@ -150,8 +157,16 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
 
     @r.patch("/learners/{learner_id}", status_code=204)
     def patch_learner(learner_id: str, body: LearnerPatch, conn=Depends(get_conn)):
-        one(conn, "learners", learner_id, "learner", learner_json)
+        cur = one(conn, "learners", learner_id, "learner", learner_json)
         sent = body.model_dump(exclude_unset=True, exclude={"id"})
+        nulls = sorted(f for f in sent if sent[f] is None and f in _NOT_NULL)
+        if nulls:
+            raise HTTPException(422, f"fields cannot be null: {', '.join(nulls)}")
+        country = sent.get("country", cur["country"])
+        if "country" in sent and country != "USA" and "state" not in sent:
+            sent["state"] = None  # state is USA-only
+        if sent.get("state") is not None and country != "USA":
+            raise HTTPException(422, "state is only allowed when country is USA")
         for f, v in sent.items():
             conn.execute(f"UPDATE learners SET {_FIELDS[f]}=? WHERE id=?",
                          (int(v) if f == "isManager" else v, learner_id))
@@ -197,17 +212,9 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
     @r.get("/learner-training-modules")
     def list_modules(learnerId: str | None = None, limit: int = Query(25, ge=1, le=100),
                      cursor: str | None = None, conn=Depends(get_conn)):
-        where, args = ([ "m.learner_id = ?"], [learnerId]) if learnerId else ([], [])
-        if cursor:
-            where, args = [*where, "m.id > ?"], [*args, cursor]
-        sql = ("SELECT m.*, e.completion_status FROM modules m JOIN enrollments e"
-               " ON e.id = m.enrollment_id"
-               + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY m.id LIMIT ?")
-        rows = conn.execute(sql, [*args, limit + 1]).fetchall()
-        more = len(rows) > limit
-        rows = rows[:limit]
-        return {"data": [module_json(x) for x in rows],
-                "nextCursor": rows[-1]["id"] if more else None}
+        where, args = (["m.learner_id = ?"], [learnerId]) if learnerId else ([], [])
+        return page(conn, "modules m JOIN enrollments e ON e.id = m.enrollment_id", where, args,
+                    limit, cursor, module_json, select="m.*, e.completion_status", alias="m.")
 
     app.include_router(r)
     return app
