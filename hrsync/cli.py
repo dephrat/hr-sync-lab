@@ -134,8 +134,14 @@ def _resolve(settings: Settings, args) -> int:
 
 
 def _report(settings: Settings, args) -> int:
-    print("report: not implemented yet")
-    return 1
+    from reconcile import report
+
+    md = report.build(settings.hris_db, settings.ethena_db, settings.sync_db, datetime.now(UTC))
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(md)
+    print(md)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -157,7 +163,9 @@ def main(argv=None) -> int:
     g.add_argument("--skip", action="store_true")
     s.add_argument("--note", default="")
     s.set_defaults(fn=_resolve)
-    sub.add_parser("report").set_defaults(fn=_report)
+    rp = sub.add_parser("report")
+    rp.add_argument("--out", default="data/report.md")
+    rp.set_defaults(fn=_report)
     args = p.parse_args(argv)
     return args.fn(Settings.from_env(), args)
 

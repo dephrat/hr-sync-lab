@@ -1,0 +1,69 @@
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from ethena.app import create_app
+from ethena.db import connect
+from ethena.seed import seed
+from hris.app import create_app as create_hris
+from hris.db import connect as hris_connect
+from hris.seed import seed as hris_seed
+from hrsync import engine, rules, store
+from hrsync.clients import EthenaClient, WorkdayClient
+from reconcile import report
+
+NOW = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
+SECTIONS = ["Overdue training by department", "In HRIS, not in Ethena",
+            "In Ethena, not in HRIS", "Terminated in HRIS but active in Ethena",
+            "Stale enrollments", "Review queue age"]
+
+
+@pytest.fixture
+def env(tmp_path):
+    h = hris_connect(tmp_path / "hris.db")
+    hris_seed(h)
+    e = connect(tmp_path / "ethena.db")
+    seed(e, h)
+    e.close()
+    h.close()
+    hc = TestClient(create_hris(tmp_path / "hris.db"))
+    ec = TestClient(create_app(tmp_path / "ethena.db"))
+    ec.auth = ("anyone", "test-key")
+    r = rules.load(Path(engine.__file__).parent / "rules.default.json")
+    db = store.connect(tmp_path / "sync.db")
+    return {"hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "rules": r,
+            "db": db, "paths": (tmp_path / "hris.db", tmp_path / "ethena.db",
+                                tmp_path / "sync.db")}
+
+
+def build(env):
+    return report.build(*env["paths"], NOW)
+
+
+def count(md, title):
+    section = md.split(f"## {title}\n", 1)[1].split("\n## ", 1)[0]
+    return int(section.split("Count: ", 1)[1].split("\n", 1)[0])
+
+
+def test_seeded_drift_before_sync(env):
+    md = build(env)
+    assert md.startswith("# HR sync reconciliation")
+    for title in SECTIONS:
+        assert f"## {title}\n" in md
+    assert count(md, "Terminated in HRIS but active in Ethena") == 1
+    assert count(md, "In HRIS, not in Ethena") == 6
+
+
+def test_after_sync(env):
+    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW)
+    md = build(env)
+    assert count(md, "Terminated in HRIS but active in Ethena") == 0
+    assert count(md, "In HRIS, not in Ethena") == 6
+    env["hc"].post("/jobChanges", json={
+        "workerId": "W-1008", "effectiveDate": "2026-10-22", "reason": "Data_Change",
+        "businessTitle": "Senior Specialist"})
+    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW)
+    assert count(build(env), "In HRIS, not in Ethena") == 5
