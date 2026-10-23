@@ -8,6 +8,7 @@ dependencies = ["fastapi", "uvicorn", "httpx", "mcp>=2,<3"]
 
 [project.scripts]
 hrsync = "hrsync.cli:main"
+hrsync-mcp = "mcp_server.server:main"
 
 [dependency-groups]
 dev = ["pytest"]

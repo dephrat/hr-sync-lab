@@ -105,7 +105,6 @@ def _resolve(settings: Settings, args) -> int:
     change_id, worker_id, _ = item
     now = datetime.now(UTC)
     at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    note = f" {args.note}" if args.note else ""
     if args.skip:
         conn.execute("UPDATE review_queue SET status='skipped', resolved_at=?, resolution=?"
                      " WHERE id=?", (at, f"skipped:{args.note}", args.id))
@@ -114,22 +113,16 @@ def _resolve(settings: Settings, args) -> int:
         return 0
     hris, learning = _build_clients(settings)
     try:
-        learning.get_learner(args.map_learner)
+        res = engine.resolve_with_learner(hris, learning, rules.load(settings.rules_path), conn,
+                                          args.id, args.map_learner, now, args.note)
     except HrSyncClientError as exc:
-        print(f"cannot map to {args.map_learner}: {exc}", file=sys.stderr)
+        if conn.execute("SELECT status FROM review_queue WHERE id=?",
+                        (args.id,)).fetchone()[0] == "resolved":
+            print(f"mapped, but could not reload change {change_id}: {exc}", file=sys.stderr)
+        else:
+            print(f"cannot map to {args.map_learner}: {exc}", file=sys.stderr)
         return 2
-    store.map_learner(conn, worker_id, args.map_learner, "manual", at)
-    conn.execute("UPDATE review_queue SET status='resolved', resolved_at=?, resolution=?"
-                 " WHERE id=?", (at, f"mapped:{args.map_learner}{note}", args.id))
-    conn.commit()
-    try:
-        change = hris.get_job_change(change_id)
-    except HrSyncClientError as exc:
-        print(f"mapped, but could not reload change {change_id}: {exc}", file=sys.stderr)
-        return 2
-    outcome = engine.process_change(hris, learning, rules.load(settings.rules_path), conn,
-                                    change, engine.new_run_id(now), now, create_missing=True, force=True)
-    print(f"item {args.id} resolved; change {change_id}: {outcome}")
+    print(f"item {args.id} resolved; change {change_id}: {res['outcome']}")
     return 0
 
 

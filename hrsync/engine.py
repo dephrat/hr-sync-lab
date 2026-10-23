@@ -163,3 +163,25 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         store.set_watermark(store_conn, max(c["completedDate"] for c in changes))
         store_conn.commit()
     return summary
+
+
+def resolve_with_learner(hris, learning, rules: Rules, store_conn, item_id: int,
+                         learner_id: str, now: datetime, note: str = "") -> dict:
+    """Map the queue item's worker to `learner_id`, mark it resolved and reprocess its change.
+    Raises ValueError when the item is missing or not open; HrSyncClientError propagates."""
+    item = store_conn.execute("SELECT change_id, worker_id, status FROM review_queue WHERE id=?",
+                              (item_id,)).fetchone()
+    if item is None or item[2] != "open":
+        raise ValueError(f"queue item {item_id} not found or not open")
+    change_id, worker_id, _ = item
+    at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    learning.get_learner(learner_id)
+    store.map_learner(store_conn, worker_id, learner_id, "manual", at)
+    store_conn.execute("UPDATE review_queue SET status='resolved', resolved_at=?, resolution=?"
+                       " WHERE id=?", (at, f"mapped:{learner_id}{' ' + note if note else ''}", item_id))
+    store_conn.commit()
+    change = hris.get_job_change(change_id)
+    outcome = process_change(hris, learning, rules, store_conn, change, new_run_id(now), now,
+                             create_missing=True, force=True)
+    return {"item_id": item_id, "learner_id": learner_id, "change_id": change_id,
+            "outcome": outcome}
