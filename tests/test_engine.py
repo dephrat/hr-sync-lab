@@ -1,0 +1,181 @@
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from ethena.app import create_app
+from ethena.db import connect
+from ethena.seed import seed
+from hris.app import create_app as create_hris
+from hris.db import connect as hris_connect
+from hris.seed import seed as hris_seed
+from hrsync import engine, rules, store
+from hrsync.clients import EthenaClient, RateLimited, WorkdayClient
+
+NOW = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
+WM = "job_changes.completed_from"
+
+
+@pytest.fixture
+def env(tmp_path):
+    h = hris_connect(tmp_path / "hris.db")
+    hris_seed(h)
+    e = connect(tmp_path / "ethena.db")
+    facts = seed(e, h)
+    e.close()
+    h.close()
+    hc = TestClient(create_hris(tmp_path / "hris.db"))
+    ec = TestClient(create_app(tmp_path / "ethena.db"))
+    ec.auth = ("anyone", "test-key")
+    r = rules.load(Path(engine.__file__).parent / "rules.default.json")
+    db = store.connect(tmp_path / "sync.db")
+    return {"hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "rules": r,
+            "db": db, "facts": facts}
+
+
+def run(env, **kw):
+    return engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, **kw)
+
+
+def change_for(env, reason, **match):
+    for c in env["hris"].job_changes_since("2000-01-01T00:00:00Z"):
+        if c["reason"]["id"] == reason and all(
+                c.get(k, {}).get("id" if k == "jobProfile" else "descriptor") == v
+                for k, v in match.items()):
+            return c
+    raise AssertionError(f"no {reason} change")
+
+
+def learner_for(env, worker_id):
+    return env["db"].execute("SELECT learner_id FROM id_map WHERE worker_id=?",
+                             (worker_id,)).fetchone()[0]
+
+
+def queue(env, reason):
+    return env["db"].execute("SELECT worker_id, detail FROM review_queue WHERE reason=?",
+                             (reason,)).fetchall()
+
+
+def post_change(env, worker_id, **extra):
+    resp = env["hc"].post("/jobChanges", json={
+        "workerId": worker_id, "effectiveDate": "2026-10-22", "reason": "Data_Change",
+        "businessTitle": "Senior Specialist", **extra})
+    assert resp.status_code == 201
+    return resp.json()
+
+
+def test_first_run_processes_seed_changes(env):
+    s = run(env)
+    assert s.changes_seen == 12 and s.failed == 0
+    for c in env["hris"].job_changes_since("2000-01-01T00:00:00Z"):
+        assert env["db"].execute("SELECT COUNT(*) FROM audit WHERE change_id=?",
+                                 (c["id"],)).fetchone()[0] >= 1
+
+
+def test_second_run_is_noop(env):
+    run(env)
+    s = run(env)
+    assert s.patched == s.created == s.terminated == 0
+    assert s.failed == 0 and s.skipped >= 1
+
+
+def test_promotion_sets_manager_and_enrolls(env):
+    c = change_for(env, "Promotion", jobProfile="Sales_Team_Lead")
+    run(env)
+    lid = learner_for(env, c["worker"]["id"])
+    assert env["learning"].get_learner(lid)["isManager"] is True
+    names = {x["campaignName"] for x in env["learning"].campaigns_for_learner(lid)}
+    assert "Manager Fundamentals" in names
+    assert env["db"].execute(
+        "SELECT outcome FROM audit WHERE change_id=? AND action='verify_enrollment'",
+        (c["id"],)).fetchone()[0] == "ok"
+
+
+def test_vancouver_transfer_is_queued(env):
+    c = change_for(env, "Transfer", location="Vancouver, BC")
+    run(env)
+    rows = queue(env, "UNKNOWN_LOCATION")
+    assert any(w == c["worker"]["id"] and "Vancouver, BC" in d for w, d in rows)
+
+
+def test_duplicate_email_is_queued(env):
+    post_change(env, "W-1042")
+    run(env)
+    assert [w for w, _ in queue(env, "AMBIGUOUS_LEARNER")] == ["W-1042"]
+
+
+def test_termination_terminates_learner(env):
+    c = change_for(env, "Termination")
+    s = run(env)
+    assert s.terminated == 1
+    lid = learner_for(env, c["worker"]["id"])
+    assert env["learning"].get_learner(lid)["status"] == "TERMINATED"
+
+
+def test_missing_learner_is_created(env):
+    wid = env["facts"]["absent_workers"][0]
+    post_change(env, wid)
+    s = run(env)
+    assert s.created == 1
+    email = env["hris"].get_worker(wid)["primaryWorkEmail"]
+    found = env["learning"].find_learners_by_email(email)
+    assert len(found) == 1 and learner_for(env, wid) == found[0]["id"]
+    assert env["db"].execute("SELECT source FROM id_map WHERE worker_id=?",
+                             (wid,)).fetchone()[0] == "created"
+
+
+def test_missing_learner_queued_when_create_disabled(env):
+    wid = env["facts"]["absent_workers"][0]
+    post_change(env, wid)
+    s = run(env, create_missing=False)
+    assert s.created == 0
+    assert [w for w, _ in queue(env, "NO_LEARNER_MATCH")] == [wid]
+    email = env["hris"].get_worker(wid)["primaryWorkEmail"]
+    assert env["learning"].find_learners_by_email(email) == []
+
+
+def test_rate_limit_stops_without_advancing_watermark(env):
+    learning, orig = env["learning"], env["learning"].patch_learner
+    calls = []
+
+    def flaky(lid, body):
+        calls.append(lid)
+        if len(calls) == 3:
+            raise RateLimited(1)
+        return orig(lid, body)
+
+    # Seeded learners already match HRIS, so add drift: three promotions to a manager profile.
+    skip = {*env["facts"]["absent_workers"], "W-1042"}
+    promoted = [w for w in (f"W-{1001 + i}" for i in range(100)) if w not in skip
+                and not env["hris"].get_worker(w)["isManager"]][:3]
+    for i, wid in enumerate(promoted):
+        post_change(env, wid, reason="Promotion", jobProfile="Engineering_Manager",
+                    completedDate=f"2026-10-23T0{i}:00:00Z")
+    learning.patch_learner = flaky
+    s = run(env)
+    assert s.failed == 1
+    assert env["db"].execute("SELECT value FROM watermark WHERE key=?", (WM,)).fetchone() is None
+    done = {r[0] for r in env["db"].execute(
+        "SELECT change_id FROM audit WHERE outcome != 'failed'"
+        " AND action IN ('patch_learner','terminate_learner','queue')")}
+    learning.patch_learner = orig
+    s2 = run(env)
+    assert s2.failed == 0 and s2.changes_seen == 15
+    assert s2.skipped == len(done)
+    assert env["db"].execute("SELECT value FROM watermark WHERE key=?", (WM,)).fetchone()
+    assert env["db"].execute("SELECT COUNT(*) FROM audit WHERE outcome='failed'").fetchone()[0] == 0
+
+
+def test_watermark_boundary_does_not_reprocess(env):
+    run(env)
+    wm = env["db"].execute("SELECT value FROM watermark WHERE key=?", (WM,)).fetchone()[0]
+    wid = env["facts"]["absent_workers"][1]
+    jc = post_change(env, wid, completedDate=wm)
+    s = run(env)
+    assert s.created == 1
+    s2 = run(env)
+    assert s2.created == 0
+    rows = env["db"].execute("SELECT action, outcome FROM audit WHERE change_id=?",
+                             (jc["id"],)).fetchall()
+    assert ("create_learner", "ok") in rows and ("skip", "skipped") in rows
