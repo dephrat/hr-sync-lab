@@ -52,7 +52,8 @@ def _step(action, fn, *args):
 def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
                    change: dict, run_id: str, now: datetime, create_missing: bool = True) -> str:
     """Process one job change. Returns one of: skipped, queued, created, terminated, patched,
-    ok, failed. Commits on return."""
+    ok, failed. Commits on return. A Termination for a worker with no learner is queued
+    NO_LEARNER_MATCH regardless of create_missing."""
     at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     cid, wid = change["id"], change["worker"]["id"]
     audit = lambda lid, action, outcome, detail: store.audit(
@@ -62,7 +63,7 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
         if store.already_processed(store_conn, cid):
             audit(None, "skip", "skipped", "already processed")
             return "skipped"
-        worker = _step("map_learner", hris.get_worker, wid)
+        worker = _step("load_worker", hris.get_worker, wid)
         profile, location = worker["jobProfile"]["id"], worker["location"]["descriptor"]
         attrs = rules.attributes_for(profile, location,
                                      worker["primarySupervisoryOrganization"]["descriptor"])

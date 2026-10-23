@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS id_map (
     worker_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, source TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY, run_id TEXT, change_id TEXT, worker_id TEXT, learner_id TEXT,
-    action TEXT, outcome TEXT, detail TEXT, created_at TEXT, UNIQUE(change_id, action));
+    action TEXT, outcome TEXT, detail TEXT, created_at TEXT, UNIQUE(run_id, change_id, action));
 CREATE TABLE IF NOT EXISTS review_queue (
     id INTEGER PRIMARY KEY, change_id TEXT, worker_id TEXT, reason TEXT, detail TEXT,
     status TEXT, created_at TEXT, resolved_at TEXT, resolution TEXT);
@@ -43,7 +43,7 @@ def map_learner(conn, worker_id: str, learner_id: str, source: str, at: str) -> 
 
 
 def audit(conn, run_id, change_id, worker_id, learner_id, action, outcome, detail, at) -> None:
-    """INSERT OR REPLACE on UNIQUE(change_id, action): the latest attempt of a step wins.
+    """INSERT OR REPLACE on UNIQUE(run_id, change_id, action): the latest attempt of a step wins.
     That lets a change that failed be retried (its `failed` row is overwritten) and lets a
     repeated `skip` for an already-processed change replace the previous skip row."""
     conn.execute(
@@ -53,10 +53,11 @@ def audit(conn, run_id, change_id, worker_id, learner_id, action, outcome, detai
 
 
 def already_processed(conn, change_id: str) -> bool:
+    """True when a terminal audit row exists; otherwise the change re-runs from the top."""
     return conn.execute(
-        "SELECT 1 FROM audit WHERE change_id=? AND outcome != 'failed'"
-        " AND action IN ('patch_learner','terminate_learner','queue')", (change_id,)
-    ).fetchone() is not None
+        "SELECT 1 FROM audit WHERE change_id=? AND ((action IN ('verify_enrollment',"
+        "'terminate_learner') AND outcome='ok') OR (action='queue' AND outcome='queued'))",
+        (change_id,)).fetchone() is not None
 
 
 def queue_item(conn, change_id, worker_id, reason, detail, at) -> None:

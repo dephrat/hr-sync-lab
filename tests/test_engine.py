@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -65,6 +66,22 @@ def post_change(env, worker_id, **extra):
     return resp.json()
 
 
+def drifted_engineer(env):
+    """A non-manager Software_Engineer at a rules-known location who has a learner."""
+    skip = {*env["facts"]["absent_workers"], "W-1042"}
+    for w in (f"W-{1001 + i}" for i in range(100)):
+        wk = env["hris"].get_worker(w)
+        if (w not in skip and wk["jobProfile"]["id"] == "Software_Engineer"
+                and wk["location"]["descriptor"] in env["rules"].locations):
+            return w
+    raise AssertionError("no suitable engineer in seed")
+
+
+def promote(env, wid):
+    return post_change(env, wid, reason="Promotion", jobProfile="Engineering_Manager",
+                       supervisoryOrganization="Engineering")
+
+
 def test_first_run_processes_seed_changes(env):
     s = run(env)
     assert s.changes_seen == 12 and s.failed == 0
@@ -74,16 +91,24 @@ def test_first_run_processes_seed_changes(env):
 
 
 def test_second_run_is_noop(env):
-    run(env)
+    promote(env, drifted_engineer(env))
+    post_change(env, env["facts"]["absent_workers"][0])
+    s1 = run(env)
+    assert s1.patched >= 1 and s1.created == 1
     s = run(env)
     assert s.patched == s.created == s.terminated == 0
     assert s.failed == 0 and s.skipped >= 1
 
 
 def test_promotion_sets_manager_and_enrolls(env):
-    c = change_for(env, "Promotion", jobProfile="Sales_Team_Lead")
+    wid = drifted_engineer(env)
+    c = promote(env, wid)
     run(env)
-    lid = learner_for(env, c["worker"]["id"])
+    lid = learner_for(env, wid)
+    detail = env["db"].execute(
+        "SELECT detail FROM audit WHERE change_id=? AND action='patch_learner' AND outcome='ok'",
+        (c["id"],)).fetchone()[0]
+    assert json.loads(detail)["isManager"] is True
     assert env["learning"].get_learner(lid)["isManager"] is True
     names = {x["campaignName"] for x in env["learning"].campaigns_for_learner(lid)}
     assert "Manager Fundamentals" in names
@@ -164,7 +189,10 @@ def test_rate_limit_stops_without_advancing_watermark(env):
     assert s2.failed == 0 and s2.changes_seen == 15
     assert s2.skipped == len(done)
     assert env["db"].execute("SELECT value FROM watermark WHERE key=?", (WM,)).fetchone()
-    assert env["db"].execute("SELECT COUNT(*) FROM audit WHERE outcome='failed'").fetchone()[0] == 0
+    failed = env["db"].execute("SELECT change_id, action FROM audit WHERE outcome='failed'").fetchall()
+    assert len(failed) == 1
+    assert env["db"].execute(
+        "SELECT 1 FROM audit WHERE change_id=? AND action=? AND outcome='ok'", failed[0]).fetchone()
 
 
 def test_watermark_boundary_does_not_reprocess(env):
@@ -179,3 +207,39 @@ def test_watermark_boundary_does_not_reprocess(env):
     rows = env["db"].execute("SELECT action, outcome FROM audit WHERE change_id=?",
                              (jc["id"],)).fetchall()
     assert ("create_learner", "ok") in rows and ("skip", "skipped") in rows
+
+
+def test_failure_after_patch_is_retried(env):
+    wid = drifted_engineer(env)
+    c = promote(env, wid)
+    learning, orig = env["learning"], env["learning"].campaigns_for_learner
+    target = []
+
+    def flaky(lid):
+        if not target and (lid,) == env["db"].execute(
+                "SELECT learner_id FROM id_map WHERE worker_id=?", (wid,)).fetchone():
+            target.append(lid)
+            raise RateLimited(1)
+        return orig(lid)
+
+    learning.campaigns_for_learner = flaky
+    s = run(env)
+    assert s.failed == 1
+    assert env["db"].execute("SELECT 1 FROM watermark WHERE key=?", (WM,)).fetchone() is None
+    learning.campaigns_for_learner = orig
+    s2 = run(env)
+    assert s2.failed == 0
+    rows = env["db"].execute("SELECT action, outcome FROM audit WHERE change_id=?",
+                             (c["id"],)).fetchall()
+    assert ("verify_enrollment", "failed") in rows and ("verify_enrollment", "ok") in rows
+    assert ("skip", "skipped") not in rows
+
+
+def test_enrollment_missing_is_queued(env):
+    data = json.loads((Path(engine.__file__).parent / "rules.default.json").read_text())
+    data["campaigns"].append({"campaignName": "Nonexistent Campaign", "when": {}})
+    env["rules"] = rules.Rules(data)
+    run(env)
+    rows = env["db"].execute("SELECT detail FROM review_queue WHERE reason='ENROLLMENT_MISSING'"
+                             " AND status='open'").fetchall()
+    assert rows and all("Nonexistent Campaign" in d for (d,) in rows)
