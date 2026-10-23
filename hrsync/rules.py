@@ -1,4 +1,6 @@
-"""Rules table: Workday profile/location -> Ethena learner attributes -> expected courses."""
+"""Rules table: Workday profile/location -> Ethena learner attributes -> expected campaigns.
+
+The engine compares expected_campaigns against `campaignName` from campaigns_for_learner."""
 import json
 from pathlib import Path
 
@@ -9,7 +11,7 @@ class Rules:
     def __init__(self, data: dict):
         self.locations = data["locations"]
         self.profiles = data["profiles"]
-        self.courses = data["courses"]
+        self.campaigns = data["campaigns"]
 
     def missing(self, job_profile_id: str, location_descriptor: str) -> str | None:
         if job_profile_id not in self.profiles:
@@ -28,8 +30,8 @@ class Rules:
                 "customCategory": prof.get("customCategory", loc.get("customCategory")),
                 "department": department}
 
-    def expected_courses(self, attrs: LearnerAttrs) -> set[str]:
-        return {c["courseName"] for c in self.courses
+    def expected_campaigns(self, attrs: LearnerAttrs) -> set[str]:
+        return {c["campaignName"] for c in self.campaigns
                 if all(attrs.get(k) == v for k, v in c["when"].items())}
 
 

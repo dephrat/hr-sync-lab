@@ -53,40 +53,40 @@
       "customCategory": "WAREHOUSE"
     }
   },
-  "courses": [
+  "campaigns": [
     {
-      "courseName": "Harassment Prevention (Ontario)",
+      "campaignName": "Harassment Prevention (Ontario)",
       "when": {
         "country": "CAN",
         "customCategory": "ON"
       }
     },
     {
-      "courseName": "Harassment Prevention (US Managers)",
+      "campaignName": "Harassment Prevention (US Managers)",
       "when": {
         "country": "USA",
         "isManager": true
       }
     },
     {
-      "courseName": "Harassment Prevention (US Employees)",
+      "campaignName": "Harassment Prevention (US Employees)",
       "when": {
         "country": "USA",
         "isManager": false
       }
     },
     {
-      "courseName": "Manager Fundamentals",
+      "campaignName": "Manager Fundamentals",
       "when": {
         "isManager": true
       }
     },
     {
-      "courseName": "Data Privacy Essentials",
+      "campaignName": "Data Privacy Essentials",
       "when": {}
     },
     {
-      "courseName": "Workplace Safety (Warehouse)",
+      "campaignName": "Workplace Safety (Warehouse)",
       "when": {
         "customCategory": "WAREHOUSE"
       }

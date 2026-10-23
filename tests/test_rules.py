@@ -31,14 +31,14 @@ def test_warehouse_category_overrides_location(r):
     assert a["customCategory"] == "WAREHOUSE" and a["state"] == "MN" and a["isManager"] is False
 
 
-def test_expected_courses(r):
+def test_expected_campaigns(r):
     a = r.attributes_for("Sales_Team_Lead", "Toronto, ON", "Sales")
-    assert r.expected_courses(a) == {
+    assert r.expected_campaigns(a) == {
         "Harassment Prevention (Ontario)", "Manager Fundamentals", "Data Privacy Essentials"}
     us = r.attributes_for("Warehouse_Supervisor", "Austin, TX", "Operations")
-    assert r.expected_courses(us) == {
+    assert r.expected_campaigns(us) == {
         "Harassment Prevention (US Managers)", "Manager Fundamentals",
         "Data Privacy Essentials", "Workplace Safety (Warehouse)"}
     emp = r.attributes_for("Sales_Rep", "New York, NY", "Sales")
-    assert r.expected_courses(emp) == {
+    assert r.expected_campaigns(emp) == {
         "Harassment Prevention (US Employees)", "Data Privacy Essentials"}
