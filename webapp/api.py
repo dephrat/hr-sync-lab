@@ -23,11 +23,11 @@ WORKER_ID = r"^[A-Za-z0-9-]+$"
 
 # One sentence per reason code, taken from the "What happened" column of docs/runbook.md.
 REASON_HELP: dict[str, str] = {
-    "UNKNOWN_LOCATION": "The worker's Workday location is not in the rules table, so the sync "
-                        "does not know which country or province rules apply. Nothing was "
+    "UNKNOWN_LOCATION": "This person works at an office the sync has no training rules for yet, "
+                        "so it cannot tell which country or province courses apply. Nothing was "
                         "written to Ethena.",
-    "UNKNOWN_PROFILE": "The worker's Workday job profile is not in the rules table, so the sync "
-                       "does not know which attributes apply. Nothing was written to Ethena.",
+    "UNKNOWN_PROFILE": "This person has a job the sync has no training rules for yet, so it "
+                       "cannot tell which courses apply. Nothing was written to Ethena.",
     "AMBIGUOUS_LEARNER": "Two or more Ethena learners share the worker's email, so the sync "
                          "cannot tell which one is the real person.",
     "NO_LEARNER_MATCH": "No Ethena learner has the worker's email, and the sync was told not to "
@@ -38,8 +38,8 @@ REASON_HELP: dict[str, str] = {
 
 
 REASON_LABEL: dict[str, str] = {
-    "UNKNOWN_LOCATION": "Location not in the rules table",
-    "UNKNOWN_PROFILE": "Job profile not in the rules table",
+    "UNKNOWN_LOCATION": "No training rules for this office yet",
+    "UNKNOWN_PROFILE": "No training rules for this job yet",
     "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
     "NO_LEARNER_MATCH": "No Ethena account for this person",
     "ENROLLMENT_MISSING": "An expected course did not appear",
@@ -405,15 +405,15 @@ def drift(request: Request):
             attrs = b.rules.attributes_for(
                 profile, loc, w["primarySupervisoryOrganization"]["descriptor"])
             if attrs is None:
-                what = ("job profile " + repr(w["jobProfile"]["descriptor"])
-                        if b.rules.missing(profile, loc) == "profile"
-                        else "location " + repr(loc))
                 kind = "needs_rule"
-                sentence = (f"Workday {what} is not in the rules table, so the sync "
-                            "cannot decide.")
                 if b.rules.missing(profile, loc) == "location":
-                    sentence = f"Workday location '{loc}' is not in the rules table, so the sync cannot decide."
-                sentence = f"{name}: {sentence}"
+                    sentence = (f"works in {loc}, and the sync has no training rules for that "
+                                "office yet, so it will not guess which courses apply.")
+                else:
+                    sentence = (f"is a {w['jobProfile']['descriptor']}, and the sync has no "
+                                "training rules for that job yet, so it will not guess which "
+                                "courses apply.")
+                sentence = f"{name} {sentence}"
             else:
                 diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
                 if diff:

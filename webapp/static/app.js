@@ -394,13 +394,13 @@ async function loadState() {
 const DRIFT_GROUPS = [
   ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
     "Run sync to update Ethena."],
-  ["waiting", "Waiting for manual review", true, (i) => i.in_queue,
+  ["waiting", "Needs manual review", true, (i) => i.in_queue,
     "Resolve or skip under Needs manual review."],
   ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous",
     "Run sync, then manual review."],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
-    "Run sync to create the account."],
-  ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule",
+    "Run sync to create the account(s)."],
+  ["needs_rule", "No training rules for their office or job yet", false, (i) => !i.in_queue && i.kind === "needs_rule",
     "Run sync, then manual review."],
 ];
 async function loadDrift() {
