@@ -478,14 +478,14 @@ def drift(request: Request):
             elif found:
                 learner = found[0]
             elif not terminated:
-                kind, sentence = "no_learner", f"{name}: in Workday, no Ethena account yet."
+                kind, sentence = "no_learner", f"{name} is in Workday but has no Ethena account yet."
             else:
                 continue
         if kind is None and terminated:
             if learner.get("status") != "ACTIVE":
                 continue
             kind = "terminated"
-            sentence = f"{name}: left the company in Workday; Ethena still has them active."
+            sentence = f"In Workday, {name} left the company. Ethena still has them active."
         elif kind is None:
             profile, loc = w["jobProfile"]["id"], w["location"]["descriptor"]
             attrs = rules.attributes_for(
