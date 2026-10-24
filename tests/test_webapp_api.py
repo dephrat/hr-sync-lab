@@ -82,6 +82,10 @@ def test_workers_search(client):
     r = client.get("/api/workers", params={"q": "W-1038"}).json()
     assert len(r) == 1 and r[0]["id"] == "W-1038"
     assert len(client.get("/api/workers", params={"q": "a"}).json()) <= 25
+    warehouse = client.get("/api/workers", params={"q": "warehouse"}).json()
+    assert warehouse and all("Warehouse" in w["jobProfile"] for w in warehouse)
+    toronto = client.get("/api/workers", params={"q": "toronto"}).json()
+    assert toronto and all(w["location"] == "Toronto, ON" for w in toronto)
 
 
 def test_worker_detail_has_audit_after_run(client):

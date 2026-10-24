@@ -27,7 +27,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   <section id="tab-workday" class="panel" data-accent="workday">
     <h2>Workday (mock HRIS)</h2>
     <p class="muted">The people system. Change someone's job here, then let the sync carry it to Ethena.</p>
-    <input id="wd-q" class="search" placeholder="Search by name, id or email">
+    <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
     <div id="wd-detail"></div>
     <div id="wd-table"></div>
     <h3>Recent job changes</h3>
@@ -37,7 +37,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   <section id="tab-ethena" class="panel" data-accent="ethena">
     <h2>Ethena (mock learning platform)</h2>
     <p class="muted">Read-only. This is what the training system currently believes about each person.</p>
-    <input id="et-q" class="search" placeholder="Filter by name, id or email">
+    <input id="et-q" class="search" placeholder="Filter by name, id, email, country, department or category">
     <div id="et-detail"></div>
     <div id="et-table"></div>
     <h3>Campaigns</h3>
@@ -54,7 +54,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
       <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>
     <div id="sy-queue"></div>
     <h3>Look up a person</h3>
-    <input id="sy-q" class="search" placeholder="Search workers by name, id or email">
+    <input id="sy-q" class="search" placeholder="Search workers by name, id, email, job profile or location">
     <div id="sy-results"></div>
     <div id="sy-person"></div>
     <h3>Why isn't this person in a campaign?</h3>

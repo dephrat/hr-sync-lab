@@ -218,8 +218,10 @@ def search_workers(request: Request, q: str = ""):
     needle = q.strip().lower()
     out = []
     for w in b.hris.list_workers():
-        if needle and not any(needle in str(w.get(k, "")).lower()
-                              for k in ("id", "descriptor", "primaryWorkEmail")):
+        haystack = [w["id"], w["descriptor"], w["primaryWorkEmail"],
+                    w["jobProfile"]["descriptor"], w["location"]["descriptor"],
+                    w["primarySupervisoryOrganization"]["descriptor"]]
+        if needle and not any(needle in str(v).lower() for v in haystack):
             continue
         out.append({"id": w["id"], "descriptor": w["descriptor"],
                     "primaryWorkEmail": w["primaryWorkEmail"],

@@ -154,7 +154,8 @@ async function renderEthena() {
 }
 function filterLearners() {
   const q = $("et-q").value.trim().toLowerCase();
-  const rows = learners.filter((l) => !q || [l.id, l.name, l.email].some((v) => String(v || "").toLowerCase().includes(q)));
+  const rows = learners.filter((l) => !q || [l.id, l.name, l.email, l.status, l.country, l.state, l.department, l.customCategory]
+    .some((v) => String(v || "").toLowerCase().includes(q)));
   const box = $("et-table");
   box.innerHTML = table(rows, [
     ["Id", (l) => esc(l.id)], ["Name", (l) => esc(l.name)], ["Email", (l) => esc(l.email)],
