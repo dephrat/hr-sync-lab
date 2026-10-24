@@ -396,19 +396,26 @@ const opts = (list, sel, blank) => (blank ? `<option value="">${blank}</option>`
   list.map((o) => `<option value="${esc(o.value)}"${o.value === sel ? " selected" : ""}>${esc(o.label)}</option>`).join("");
 async function loadRules() {
   const r = await api("api/rules"), ch = r.choices;
+  const courses = (list) => (list || []).length
+    ? list.map((c) => `<span class="tpill">${esc(c)}</span>`).join(" ") : '<span class="muted">none extra</span>';
   const office = (o) => `<tr data-office="${esc(o.office)}"><td>${esc(o.office)}` +
-    (o.country ? "" : '<span class="tag-amber">not set: people here go to manual review</span>') + "</td>" +
+    (o.country ? "" : ' <span class="tag-amber">not set</span>') + "</td>" +
     `<td><select class="r-country" aria-label="Country for ${esc(o.office)}">${opts(ch.countries, o.country, "not set")}</select></td>` +
     `<td><select class="r-region" aria-label="Province or state for ${esc(o.office)}"${o.country ? "" : " disabled"}>` +
-    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td></tr>`;
+    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td>` +
+    `<td>${o.country ? courses(o.courses) : '<span class="muted">nobody here gets courses until this is set</span>'}</td></tr>`;
   const triple = [{ value: "yes", label: "yes" }, { value: "no", label: "no" }];
   const job = (j) => `<tr data-job="${esc(j.job)}"><td>${esc(j.label)}` +
-    (j.isManager === null ? '<span class="tag-amber">not set: people with this job go to manual review</span>' : "") + "</td>" +
+    (j.isManager === null ? ' <span class="tag-amber">not set</span>' : "") + "</td>" +
     `<td><select class="r-mgr" aria-label="Manager for ${esc(j.label)}">${opts(triple, j.isManager === null ? "" : j.isManager ? "yes" : "no", "not set")}</select></td>` +
-    `<td><select class="r-cat" aria-label="Category for ${esc(j.label)}"${j.isManager === null ? " disabled" : ""}>${opts(ch.categories, j.category || "none")}</select></td></tr>`;
-  $("sy-rules").innerHTML = '<div class="rules-grid"><div><h4>Offices</h4><table><thead><tr><th>Office</th><th>Country</th><th>Province or state</th></tr></thead><tbody>' +
-    r.offices.map(office).join("") + '</tbody></table></div><div><h4>Jobs</h4><table><thead><tr><th>Job</th><th>Manager</th><th>Category</th></tr></thead><tbody>' +
-    r.jobs.map(job).join("") + "</tbody></table></div></div>";
+    `<td><select class="r-cat" aria-label="Category for ${esc(j.label)}"${j.isManager === null ? " disabled" : ""}>${opts(ch.categories, j.category || "none")}</select></td>` +
+    `<td>${courses(j.courses)}</td></tr>`;
+  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="2">Ethena is told</th><th>So they get</th></tr>` +
+    `<tr class="sub"><th>${first}</th><th>${a}</th><th>${b}</th><th></th></tr></thead>`;
+  $("sy-rules").innerHTML =
+    `<h4>By office</h4><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table>` +
+    `<h4>By job</h4><table class="rules">${head("Job", "Manager", "Category")}<tbody>${r.jobs.map(job).join("")}</tbody></table>` +
+    `<p class="muted">Everyone also gets: ${(r.everyone || []).map(esc).join(", ") || "nothing else"}.</p>`;
   const saved = async (url, body) => {
     await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     toast("Saved. Run sync to apply it.");
@@ -457,7 +464,7 @@ async function loadDrift() {
   const secs = DRIFT_GROUPS.map(([k, title, open, pick, todo]) => [k, title, open, items.filter(pick), todo])
     .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
   $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
-    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync makes Ethena match Workday for everyone; what is left needs a person or a rules-table entry.</p>' +
+    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync makes Ethena match Workday for everyone; what is left needs a person or a course rule.</p>' +
     (secs || '<p class="allgood">Everything Ethena knows matches Workday.</p>');
   bindGroups($("sy-drift"));
 }
@@ -558,7 +565,7 @@ function outcomeOf(q) {
 function queueActions(q) {
   const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional)" size="28"></div>`;
   const dismiss = `<button data-act="skip" data-id="${esc(q.id)}">Dismiss</button>`;
-  if (q.needs_rule) return '<div class="help">Add it under Translation rules, then run sync. If this person needs no training, dismiss it.</div>' +
+  if (q.needs_rule) return '<div class="help">Add it under Course rules, then run sync. If this person needs no training, dismiss it.</div>' +
     note + `<div class="row" style="margin-top:4px">${dismiss}</div>`;
   const cands = q.candidates || [];
   const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick an account</option>${cands.map((c) =>

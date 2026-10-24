@@ -219,3 +219,7 @@ a.et-ico:hover { background: #f4f5f6; }
 .rules-grid h4 { margin: 4px 0 6px; }
 .rules-grid select { padding: 3px 6px; }
 .tag-amber { display: inline-block; margin-left: 6px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #fff4d6; color: #8a5a00; }
+table.rules { margin-bottom: 14px; }
+table.rules select { padding: 3px 6px; }
+table.rules thead tr:first-child th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #777; border-bottom: none; }
+table.rules thead tr.sub th { font-weight: 600; }

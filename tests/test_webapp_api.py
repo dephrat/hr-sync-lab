@@ -256,7 +256,14 @@ def test_get_rules_covers_everything(client):
     assert [o["office"] for o in r["offices"]] == LOCATIONS
     assert [j["job"] for j in r["jobs"]] == JOB_PROFILES
     by = {o["office"]: o for o in r["offices"]}
-    assert by["Toronto, ON"] == {"office": "Toronto, ON", "country": "CAN", "region": "ON"}
+    assert {k: by["Toronto, ON"][k] for k in ("office", "country", "region")} == {
+        "office": "Toronto, ON", "country": "CAN", "region": "ON"}
+    assert "Harassment Prevention (Ontario)" in by["Toronto, ON"]["courses"]
+    assert by["Vancouver, BC"]["courses"] == []
+    jobs = {j["job"]: j for j in r["jobs"]}
+    assert "Manager Fundamentals" in jobs["Sales_Team_Lead"]["courses"]
+    assert "Workplace Safety (Warehouse)" in jobs["Warehouse_Associate"]["courses"]
+    assert r["everyone"] == ["Data Privacy Essentials"]
     assert by["Austin, TX"]["region"] == "TX" and by["Vancouver, BC"]["country"] is None
     jobs = {j["job"]: j for j in r["jobs"]}
     assert jobs["Warehouse_Supervisor"]["isManager"] is True
@@ -295,7 +302,7 @@ def test_rules_persist_and_reset_restores(settings, client):
 def test_needs_rule_sentence_points_at_translation_rules(client):
     items = client.get("/api/drift").json()["items"]
     s = [i["sentence"] for i in items if i["kind"] == "needs_rule"]
-    assert s and all("courses not specified" in x and "Translation rules" in x for x in s)
+    assert s and all("courses not specified" in x and "Course rules" in x for x in s)
 
 
 def test_adding_vancouver_rule_clears_manual_review(client):
