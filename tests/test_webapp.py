@@ -74,3 +74,17 @@ def test_run_recorded(settings):
     assert last["started_at"] == "2026-10-23T12:00:00Z"
     assert last["changes_seen"] == summary.changes_seen
     conn.close()
+
+
+def test_static_assets_served(client):
+    r = client.get("/static/app.js")
+    assert r.status_code == 200 and "javascript" in r.headers["content-type"]
+    r = client.get("/static/style.css")
+    assert r.status_code == 200 and "css" in r.headers["content-type"]
+
+
+def test_index_has_tabs_and_no_em_dash(client):
+    html = client.get("/").text
+    for title in ("Workday (mock)", "Ethena (mock)", "Sync", "Report"):
+        assert title in html
+    assert "—" not in html

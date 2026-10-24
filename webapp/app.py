@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from hrsync import store
 from hrsync.config import Settings
@@ -31,6 +32,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(api.router)
     app.mount("/workday", bundle.hris_app)
     app.mount("/ethena", bundle.ethena_app)
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/")
     def index():

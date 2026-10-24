@@ -4,26 +4,72 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hr-sync-lab demo</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 0; }
-  header { padding: 12px 16px; border-bottom: 1px solid #ccc; display: flex; gap: 16px; align-items: center; }
-  .label { font-size: 12px; background: #eee; padding: 2px 8px; border-radius: 10px; }
-  nav a { margin-right: 16px; text-decoration: none; color: #222; }
-  nav { padding: 8px 16px; }
-  section { padding: 0 16px; }
-</style>
+<link rel="stylesheet" href="static/style.css">
 </head>
 <body>
-<header><strong>hr-sync-lab demo</strong><span class="label">mock systems, fake data</span></header>
-<nav>
-  <a href="#workday">Workday (mock)</a>
-  <a href="#ethena">Ethena (mock)</a>
-  <a href="#sync">Sync</a>
-  <a href="#report">Report</a>
-</nav>
-<section id="workday"></section>
-<section id="ethena"></section>
-<section id="sync"></section>
-<section id="report"></section>
+<header class="top">
+  <div class="wrap top-row">
+    <strong class="brand">hr-sync-lab demo</strong>
+    <span class="pill">mock systems, fake data</span>
+    <span class="hint">Try: promote someone in Workday, check Ethena, then Run sync.</span>
+    <button id="reset" class="plain">Reset demo</button>
+  </div>
+  <nav class="wrap tabs">
+    <a href="#workday" data-tab="workday">Workday (mock)</a>
+    <a href="#ethena" data-tab="ethena">Ethena (mock)</a>
+    <a href="#sync" data-tab="sync">Sync</a>
+    <a href="#report" data-tab="report">Report</a>
+  </nav>
+</header>
+<main class="wrap">
+  <section id="tab-workday" class="panel" data-accent="workday">
+    <h2>Workday (mock HRIS)</h2>
+    <p class="muted">The people system. Change someone's job here, then let the sync carry it to Ethena.</p>
+    <input id="wd-q" class="search" placeholder="Search by name, id or email">
+    <div id="wd-detail"></div>
+    <div id="wd-table"></div>
+    <h3>Recent job changes</h3>
+    <p class="muted">Newest first. These are what the next sync run will pick up.</p>
+    <div id="wd-changes"></div>
+  </section>
+  <section id="tab-ethena" class="panel" data-accent="ethena">
+    <h2>Ethena (mock learning platform)</h2>
+    <p class="muted">Read-only. This is what the training system currently believes about each person.</p>
+    <input id="et-q" class="search" placeholder="Filter by name, id or email">
+    <div id="et-detail"></div>
+    <div id="et-table"></div>
+    <h3>Campaigns</h3>
+    <p class="muted">Each campaign enrolls people automatically based on their attributes.</p>
+    <div id="et-campaigns"></div>
+  </section>
+  <section id="tab-sync" class="panel" data-accent="sync">
+    <h2>Sync</h2>
+    <div id="sy-state" class="strip"></div>
+    <p><button id="sy-run" class="primary">Run sync</button></p>
+    <div id="sy-result"></div>
+    <h3>Review queue</h3>
+    <p class="muted">Changes the sync could not finish on its own. A person decides what happens next.
+      <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>
+    <div id="sy-queue"></div>
+    <h3>Look up a person</h3>
+    <input id="sy-q" class="search" placeholder="Search workers by name, id or email">
+    <div id="sy-results"></div>
+    <div id="sy-person"></div>
+    <h3>Why isn't this person in a campaign?</h3>
+    <form id="sy-explain" class="row">
+      <input id="ex-worker" placeholder="Worker id, e.g. W-1001" required>
+      <select id="ex-campaign"></select>
+      <button class="primary">Explain</button>
+    </form>
+    <div id="ex-out"></div>
+  </section>
+  <section id="tab-report" class="panel" data-accent="report">
+    <h2>Report</h2>
+    <p><button id="rp-refresh" class="primary">Refresh</button> <span id="rp-time" class="muted"></span></p>
+    <div id="rp-body"></div>
+  </section>
+</main>
+<div id="toasts"></div>
+<script src="static/app.js"></script>
 </body>
 </html>
