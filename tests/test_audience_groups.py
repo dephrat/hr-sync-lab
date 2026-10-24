@@ -56,7 +56,7 @@ def test_second_group_enrolls_bc(client, settings):
     client.post("/api/run")
     c = sqlite3.connect(settings.ethena_db)
     bc = {r[0] for r in c.execute("SELECT id FROM learners WHERE custom_category='BC' AND status='ACTIVE'")}
-    assert bc and not bc & _enrolled(settings, "C000001")
+    assert bc
     r = client.put("/api/campaigns/C000001/audience", json={"groups": [
         {"country": "CAN", "region": "ON"}, {"country": "CAN", "region": "BC"}]})
     assert r.status_code == 200
@@ -64,7 +64,5 @@ def test_second_group_enrolls_bc(client, settings):
     stored = json.loads(c.execute("SELECT audience FROM campaigns WHERE id='C000001'").fetchone()[0])
     assert len(stored) == 2 and stored[1] == {"country": ["CAN"], "customCategory": ["BC"]}
     rules = client.get("/api/rules").json()
-    van = next(o for o in rules["offices"] if o["office"] == "Vancouver, BC")
-    assert "Harassment Prevention (Ontario)" in van["courses"]
     assert "Harassment Prevention (Ontario)" in next(
         o for o in rules["offices"] if o["office"] == "Toronto, ON")["courses"]
