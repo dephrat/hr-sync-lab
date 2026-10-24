@@ -231,12 +231,34 @@ async function loadState() {
     ["Failed steps last run", s.failed_last_run ?? 0],
   ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
 }
+const DRIFT_GROUPS = [
+  ["pending", "Changed in Workday, not yet in Ethena", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind)],
+  ["waiting", "Waiting for a person in the review queue", true, (i) => i.in_queue],
+  ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous"],
+  ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner"],
+  ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule"],
+];
 async function loadDrift() {
   const d = await api("api/drift");
+  const items = (d.items || []).map((i) => ({ ...i, outcome: i.in_queue ? "ok" : "queued" }));
+  const secs = DRIFT_GROUPS.map(([k, title, open, pick]) => [k, title, open, items.filter(pick)])
+    .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
   $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
-    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync carries it across.</p>' +
-    (d.count ? '<ul class="changes drift-list">' + d.items.map((i) => `<li class="o-queued">${esc(i.sentence)}${i.in_queue ? ' <span class="muted">waiting for a person</span>' : ""}</li>`).join("") + "</ul>"
-      : '<p class="allgood">Everything Ethena knows matches Workday.</p>');
+    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync carries the first group across; the rest need a person or a rules change.</p>' +
+    (secs || '<p class="allgood">Everything Ethena knows matches Workday.</p>');
+  bindGroups($("sy-drift"));
+}
+function bindGroups(root) {
+  root.querySelectorAll(".grphead").forEach((h) => h.addEventListener("click", () => {
+    const body = h.nextElementSibling, open = body.hidden;
+    body.hidden = !open; h.setAttribute("aria-expanded", open);
+    h.firstElementChild.textContent = open ? "\u25be" : "\u25b8";
+  }));
+  root.querySelectorAll(".showall").forEach((a) => a.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    a.parentElement.querySelectorAll("[data-more]").forEach((x) => { x.hidden = false; });
+    a.remove();
+  }));
 }
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
@@ -261,16 +283,7 @@ async function runSync() {
       .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
     $("sy-result").innerHTML = `<p class="muted legend">${esc(LEGEND)}</p>${note}` +
       (secs || '<p class="muted">No job changes to process.</p>');
-    $("sy-result").querySelectorAll(".grphead").forEach((h) => h.addEventListener("click", () => {
-      const body = h.nextElementSibling, open = body.hidden;
-      body.hidden = !open; h.setAttribute("aria-expanded", open);
-      h.firstElementChild.textContent = open ? "\u25be" : "\u25b8";
-    }));
-    $("sy-result").querySelectorAll(".showall").forEach((a) => a.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      a.parentElement.querySelectorAll("[data-more]").forEach((x) => { x.hidden = false; });
-      a.remove();
-    }));
+    bindGroups($("sy-result"));
     await Promise.all([loadState(), loadQueue(), loadDrift()]);
     await refreshCards();
   } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = "Run sync"; }
