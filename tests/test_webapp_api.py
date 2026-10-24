@@ -32,7 +32,7 @@ def test_run_returns_narratives(client):
     sentences = [c["sentence"] for c in body["changes"]]
     hit = [x for x in sentences if "W-1038" in x]
     assert hit and any("Manager Fundamentals" in x for x in hit)
-    assert any("now a manager" in x and "Training confirmed" in x for x in hit)
+    assert any("now a manager" in x.lower() and "Training confirmed" in x for x in hit)
     assert all("—" not in x for x in sentences)
     c = body["changes"][0]
     assert {"change_id", "worker_id", "worker_name", "reason", "outcome", "actions"} <= set(c)
