@@ -434,7 +434,7 @@ async function showLearner(l) {
 
 // ---------- Sync ----------
 async function renderSync() {
-  await Promise.all([loadState(), loadQueue(), loadDrift(), loadRules()]);
+  await Promise.all([loadState(), loadQueue(), loadDrift(), loadRules(), loadLastRun()]);
 }
 const opts = (list, sel, blank) => (blank ? `<option value="">${blank}</option>` : "") +
   list.map((o) => `<option value="${esc(o.value)}"${o.value === sel ? " selected" : ""}>${esc(o.label)}</option>`).join("");
@@ -534,20 +534,24 @@ function groupHtml(key, title, open, items, todo, cap = 10) {
     (todo ? ` <em class="grptodo">${esc(todo)}</em>` : "") + "</button>" +
     `<div class="grpbody"${open ? "" : " hidden"}><ul class="changes">${items.map(li).join("")}</ul>${more}</div></section>`;
 }
+// Renders a run (fresh from Run sync, or the last one from the server after a reload).
+function showRun(r) {
+  if (!r || !r.summary) { $("sy-result").innerHTML = HINT; return; }
+  const s = r.summary, changes = r.changes || [];
+  const wrote = (s.patched || 0) + (s.created || 0) + (s.terminated || 0) + (s.queued || 0) + (s.failed || 0);
+  const note = s.changes_seen > 0 && wrote === 0
+    ? `<div class="note">Nothing to change: checked ${s.changes_seen} people and Ethena already matches Workday. Running again is always safe.</div>` : "";
+  const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
+    .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
+  $("sy-result").innerHTML = note + (secs || '<p class="muted">No job changes to process.</p>');
+  bindGroups($("sy-result"));
+}
+async function loadLastRun() { showRun(await api("api/run/last")); }
 async function runSync() {
   const btn = $("sy-run"), label = btn.textContent;
   btn.disabled = true; btn.classList.add("busy"); btn.textContent = "Running...";
   try {
-    const r = await api("api/run", { method: "POST" });
-    const s = r.summary || {}, changes = r.changes || [];
-    const wrote = (s.patched || 0) + (s.created || 0) + (s.terminated || 0) + (s.queued || 0) + (s.failed || 0);
-    const note = s.changes_seen > 0 && wrote === 0
-      ? `<div class="note">Nothing to change: checked ${s.changes_seen} people and Ethena already matches Workday. Running again is always safe.</div>` : "";
-    const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
-      .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
-    $("sy-result").innerHTML = note +
-      (secs || '<p class="muted">No job changes to process.</p>');
-    bindGroups($("sy-result"));
+    showRun(await api("api/run", { method: "POST" }));
     await Promise.all([loadState(), loadQueue(), loadDrift()]);
     await refreshCards();
   } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = label; }

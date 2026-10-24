@@ -148,7 +148,7 @@ def _sentence(name, wid, reason, outcome, rows) -> str:
         return f"{head} Already handled in an earlier run."
     if outcome == "failed":
         bad = next(r for r in rows if r["outcome"] == "failed")
-        return f"{head} Failed at {bad['action']}: {bad['detail']}"
+        return f"{head} Could not finish: Ethena or Workday did not answer ({bad['detail']}). The next run retries."
     if outcome == "queued":
         code, _, detail = by["queue"]["detail"].partition(": ")
         # Quote the offending value instead of repeating the engine's detail text.
@@ -175,7 +175,24 @@ def _run_sync(request: Request):
     b = _bundle(request)
     with _Store(request) as conn:
         summary = engine.run(b.hris, b.learning, b.rules, conn)
-        cur = conn.execute("SELECT * FROM audit WHERE run_id=? ORDER BY id", (summary.run_id,))
+    return _narrate(request, summary.to_dict())
+
+
+@router.get("/run/last")
+def last_run(request: Request):
+    """The most recent run, in the same shape POST /run returns, so the page can show it
+    again after a reload. {"summary": null, "changes": []} before the first run."""
+    with _Store(request) as conn:
+        last = store.last_run(conn)
+    if not last:
+        return {"summary": None, "changes": []}
+    return _narrate(request, last)
+
+
+def _narrate(request: Request, summary: dict) -> dict:
+    b = _bundle(request)
+    with _Store(request) as conn:
+        cur = conn.execute("SELECT * FROM audit WHERE run_id=? ORDER BY id", (summary["run_id"],))
         cols = [c[0] for c in cur.description]
         grouped: dict[str, list[dict]] = {}
         for r in cur.fetchall():
@@ -200,7 +217,7 @@ def _run_sync(request: Request):
             "actions": [{"action": r["action"], "outcome": r["outcome"], "detail": r["detail"]}
                         for r in rows],
             "sentence": _sentence(name, wid, reason, outcome, rows)})
-    return {"summary": summary.to_dict(), "changes": changes}
+    return {"summary": summary, "changes": changes}
 
 
 def _candidates(b, item: dict) -> list[dict]:
@@ -473,8 +490,8 @@ def drift(request: Request):
         if learner is None:
             found = by_email.get((w.get("primaryWorkEmail") or "").lower(), [])
             if len(found) > 1:
-                kind, sentence = "ambiguous", (f"{name}: two Ethena accounts share this email; "
-                                               "a person has to pick.")
+                kind, sentence = "ambiguous", (f"{name} has two Ethena accounts with the same "
+                                               "email. A person has to pick the right one.")
             elif found:
                 learner = found[0]
             elif not terminated:
@@ -510,8 +527,8 @@ def drift(request: Request):
                     missing = sorted(rules.expected_campaigns(attrs) - have)
                     if missing:
                         kind = "courses"
-                        sentence = (f"{name}: should be in {', '.join(missing)} "
-                                    "but is not enrolled.")
+                        sentence = (f"{name} should have {', '.join(missing)} in "
+                                    "Ethena but does not yet.")
         if kind is None:
             continue
         items.append({"worker_id": wid, "worker_name": name,

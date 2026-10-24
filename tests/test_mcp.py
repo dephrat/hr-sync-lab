@@ -52,7 +52,7 @@ def test_explain_gap_names_queue_reason(env):
     _, wid = open_item(env, "UNKNOWN_LOCATION")
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid,
                              "Anything")
-    assert "UNKNOWN_LOCATION" in text and "review queue" in text
+    assert "manual review" in text and "office" in text
 
 
 def test_list_queue_and_audit_trail(env):
@@ -160,7 +160,7 @@ def test_explain_gap_recon_item_sentence(env):
     env["db"].execute("DELETE FROM id_map WHERE worker_id='W-1001'")
     env["db"].execute("DELETE FROM review_queue WHERE worker_id='W-1001' AND change_id!='RECON-W-1001'")
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], "W-1001", "C")
-    assert text.startswith("A reconcile check queued ") and "RECON-" not in text
+    assert "manual review" in text and "RECON-" not in text
 
 
 def test_explain_gap_pending_change_sentence(env):
@@ -172,7 +172,7 @@ def test_explain_gap_pending_change_sentence(env):
         "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Pending Title"})
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
-    assert "is waiting for approval in Workday" in text and "Correction" in text
+    assert "is waiting for approval in Workday" in text and "correction" in text
 
 
 def test_explain_gap_never_synced_sentence(env):
@@ -180,4 +180,4 @@ def test_explain_gap_never_synced_sentence(env):
     for t in ("audit", "review_queue", "id_map"):
         env["db"].execute(f"DELETE FROM {t} WHERE worker_id=?", (wid,))
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
-    assert text == "No sync has processed this worker yet; run the sync."
+    assert text.startswith("No sync has looked at") and "Run sync" in text

@@ -118,7 +118,7 @@ def test_campaigns_audience_text(client):
 def test_explain_absent_worker_no_change(client):
     r = client.post("/api/explain", json={"worker_id": "W-1008",
                                           "campaign_name": "Manager Fundamentals"})
-    assert r.status_code == 200 and "No sync has processed" in r.json()["sentence"]
+    assert r.status_code == 200 and "No sync has looked at" in r.json()["sentence"]
     assert client.post("/api/explain", json={"worker_id": "W-1008"}).status_code == 422
     assert client.post("/api/explain", json={"worker_id": "W-9999",
                                              "campaign_name": "Manager Fundamentals"}).status_code == 404
@@ -341,3 +341,11 @@ def test_toronto_warehouse_worker_gets_both_province_and_safety_courses(tmp_path
     got = {e["campaignName"] for e in row["enrollments"]}
     assert {"Harassment Prevention (Ontario)", "Workplace Safety (Warehouse)"} <= got
     assert row["customCategory"] == "ON" and row["department"] == "Operations"
+
+
+def test_last_run_survives_a_reload(client):
+    assert client.get("/api/run/last").json() == {"summary": None, "changes": []}
+    ran = client.post("/api/run").json()
+    last = client.get("/api/run/last").json()
+    assert last["summary"]["run_id"] == ran["summary"]["run_id"]
+    assert [c["sentence"] for c in last["changes"]] == [c["sentence"] for c in ran["changes"]]

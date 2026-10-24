@@ -44,53 +44,56 @@ def list_queue(store_conn) -> list[dict]:
     return _rows(store_conn.execute("SELECT * FROM review_queue WHERE status='open' ORDER BY id"))
 
 
+# Plain-language names for review reasons, the same wording the demo page uses.
+REASON_WORDS = {"UNKNOWN_LOCATION": "no courses are specified for their office yet",
+                "UNKNOWN_PROFILE": "no courses are specified for their job yet",
+                "AMBIGUOUS_LEARNER": "two Ethena accounts share their email",
+                "NO_LEARNER_MATCH": "they have no Ethena account",
+                "ENROLLMENT_MISSING": "an expected course did not appear in Ethena"}
+
+
 def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name: str) -> str:
+    """One plain sentence on why a person is or is not in a course, for someone in HR."""
     lid = store.mapped_learner(store_conn, worker_id)
     try:
         worker = hris.get_worker(worker_id)
     except HrSyncClientError:
         worker = None
+    name = (worker or {}).get("descriptor") or worker_id
+    course = campaign_name
     if worker and worker.get("workerStatus", {}).get("terminated"):
-        return (f"{worker['descriptor']} has left the company. Ethena assigns no training to "
-                "people who left, and their unfinished courses were removed (also when someone stops matching a course audience).")
+        return (f"{name} has left the company. Ethena gives no training to people who left, "
+                "and their unfinished courses were removed.")
     if lid:
         for c in learning.campaigns_for_learner(lid):
             if c.get("campaignName") == campaign_name:
-                if c.get("completionStatus") == "REMOVED":
+                status = c.get("completionStatus")
+                if status == "REMOVED":
                     continue
-                return (f"Learner {lid} is enrolled in {campaign_name!r} "
-                        f"(status {c.get('completionStatus')}, deadline {c.get('deadline')}).")
+                if status == "COMPLETED":
+                    return f"{name} is enrolled in {course} and has completed it."
+                due = str(c.get("deadline") or "")[:10]
+                return f"{name} is enrolled in {course}" + (f", due {due}." if due else ".")
     item = store_conn.execute(
         "SELECT change_id, reason, detail FROM review_queue WHERE worker_id=? AND status='open'"
         " ORDER BY id DESC LIMIT 1", (worker_id,)).fetchone()
     if item:
-        change_id, reason, detail = item
-        if change_id.startswith(engine.RECON_PREFIX):
-            try:
-                name = hris.get_worker(worker_id)["descriptor"]
-            except HrSyncClientError:
-                name = worker_id
-            return (f"A reconcile check queued {name} ({reason}: {detail!r}); no attributes "
-                    f"were written, so Ethena never enrolled this learner in {campaign_name!r}.")
-        when = ""
-        try:
-            when = f" on {hris.get_job_change(change_id)['effectiveDate']}"
-        except (HrSyncClientError, KeyError, TypeError):
-            pass
-        return (f"Job change {change_id}{when} is in the review queue ({reason}: {detail!r}); "
-                f"no attributes were written, so Ethena never enrolled this learner in "
-                f"{campaign_name!r}.")
+        _, reason, _ = item
+        why = REASON_WORDS.get(reason, "the sync could not decide on its own")
+        return (f"{name} is waiting for manual review because {why}. Until someone deals with "
+                f"it, Ethena has not been updated, so {name} is not in {course} yet.")
     ok = store_conn.execute(
         "SELECT 1 FROM audit WHERE worker_id=? AND action='verify_enrollment' AND outcome='ok'"
         " ORDER BY id DESC LIMIT 1", (worker_id,)).fetchone()
-    if ok:
-        w = hris.get_worker(worker_id)
-        profile, loc = w["jobProfile"]["id"], w["location"]["descriptor"]
-        attrs = rules.attributes_for(profile, loc, w["primarySupervisoryOrganization"]["descriptor"])
+    if ok and worker:
+        profile, loc = worker["jobProfile"]["id"], worker["location"]["descriptor"]
+        attrs = rules.attributes_for(profile, loc, worker["primarySupervisoryOrganization"]["descriptor"])
         if attrs is not None and campaign_name not in rules.expected_campaigns(attrs):
-            return f"{campaign_name!r} is not required by the rules for {profile} in {loc}."
+            return (f"{course} does not apply to {name}: it goes to a different group of people "
+                    f"than a {worker['jobProfile']['descriptor']} in {loc}. Who gets each course "
+                    "is set in Ethena.")
     last = store_conn.execute(
-        "SELECT action, outcome, created_at FROM audit WHERE worker_id=? ORDER BY id DESC LIMIT 1",
+        "SELECT created_at FROM audit WHERE worker_id=? ORDER BY id DESC LIMIT 1",
         (worker_id,)).fetchone()
     if last is None:
         try:
@@ -99,11 +102,11 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
             pending = []
         if pending:
             p = pending[0]
-            return (f"Change {p['id']} ({p['reason']['descriptor']}) is waiting for approval in "
-                    f"Workday; the sync only sees approved changes.")
-        return "No sync has processed this worker yet; run the sync."
-    return (f"Last sync action was {last[0]} {last[1]} at {last[2]}; no queue item or rule "
-            f"explains the missing {campaign_name!r} enrollment.")
+            return (f"{name}'s {p['reason']['descriptor'].lower()} is waiting for approval in "
+                    "Workday. The sync only acts on approved changes.")
+        return f"No sync has looked at {name} yet. Press Run sync."
+    return (f"The sync last checked {name} at {str(last[0]).replace('T', ' ').replace('Z', ' UTC')} "
+            f"and found nothing that explains why {course} is missing. Run sync to check again.")
 
 
 def resolve_queue_item(hris, learning, rules, store_conn, item_id: int, learner_id: str,
