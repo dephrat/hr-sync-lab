@@ -36,6 +36,11 @@ class HireIn(BaseModel):
     businessTitle: str | None = None
 
 
+def _reason_label(reason_id: str) -> str:
+    """Display name for a reason id; Data_Change reads as Correction, which is what it is."""
+    return "Correction" if reason_id == "Data_Change" else reason_id.replace("_", " ")
+
+
 def _ref(id_, descriptor):
     return {"id": id_, "descriptor": descriptor}
 
@@ -62,13 +67,13 @@ def job_change_json(r, worker_name) -> dict:
     jc_id = f"JC-{r['seq']:04d}"
     out = {
         "id": jc_id,
-        "descriptor": f"{r['reason'].replace('_', ' ')}: {worker_name}",
+        "descriptor": f"{_reason_label(r['reason'])}: {worker_name}",
         "href": f"/jobChanges/{jc_id}",
         "worker": _ref(r["worker_id"], worker_name),
         "effectiveDate": r["effective_date"],
         "completedDate": r["completed_date"],
         "status": r["status"].upper(),
-        "reason": _ref(r["reason"], r["reason"].replace("_", " ")),
+        "reason": _ref(r["reason"], _reason_label(r["reason"])),
     }
     if r["job_profile"]:
         out["jobProfile"] = _ref(r["job_profile"], profile_descriptor(r["job_profile"]))

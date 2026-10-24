@@ -172,7 +172,7 @@ def test_explain_gap_pending_change_sentence(env):
         "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Pending Title"})
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
-    assert "is waiting for approval in Workday" in text and "Data Change" in text
+    assert "is waiting for approval in Workday" in text and "Correction" in text
 
 
 def test_explain_gap_never_synced_sentence(env):

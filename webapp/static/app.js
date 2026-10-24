@@ -191,7 +191,7 @@ async function showWorker(w) {
     ["Manager", yesno(wk.isManager)], ["Hired", wk.hireDate],
     ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"],
   ]) + (get(wk, "workerStatus.terminated") ? "<p>This person has left the company.</p></div>" : `<form class="jc row" id="jc-form"><strong>Job change:</strong>
-      <select name="reason">${options(REASONS, (r) => r.replace("_", " "))}</select>
+      <select name="reason">${options(REASONS, (r) => r === "Data_Change" ? "Correction" : r)}</select>
       <select name="jobProfile"><option value="">new job profile</option>${options(PROFILES, (p) => p.replace(/_/g, " "))}</select>
       <select name="location"><option value="">new location</option>${options(LOCATIONS)}</select>
       <button class="primary" disabled>Submit</button>
@@ -201,19 +201,30 @@ async function showWorker(w) {
   const form = $("jc-form");
   if (!form) return;
   const curProfile = get(wk, "jobProfile.id"), curLocation = get(wk, "location.descriptor");
+  // Each reason allows only the fields it is about: Promotion the job profile, Transfer the
+  // location, Correction either, Termination neither.
+  const ALLOWED = { Promotion: ["jobProfile"], Transfer: ["location"], Data_Change: ["jobProfile", "location"],
+    Termination: [] };
   const check = () => {
+    const allowed = ALLOWED[form.reason.value] || [];
+    ["jobProfile", "location"].forEach((n) => {
+      form[n].disabled = !allowed.includes(n);
+      if (form[n].disabled) form[n].value = "";
+    });
     const term = form.reason.value === "Termination";
     const changed = (form.jobProfile.value && form.jobProfile.value !== curProfile) ||
       (form.location.value && form.location.value !== curLocation);
     const rec = form.querySelector("button");
     rec.disabled = !(term || changed);
-    rec.title = rec.disabled ? "Pick a new job profile or location first" : "";
+    rec.title = rec.disabled ? "Pick what changes first" : "";
     $("jc-hint").textContent = term ? "Termination needs no other change." :
       changed ? "" : (form.jobProfile.value || form.location.value)
         ? "That is the same as the current value. Pick something different." :
-        "Pick a new job profile or location. A promotion or transfer has to change something.";
+        ({ Promotion: "Pick the new job profile.", Transfer: "Pick the new location." }[form.reason.value] ||
+          "Fix the job profile, the location, or both.");
   };
   ["reason", "jobProfile", "location"].forEach((n) => form[n].addEventListener("change", check));
+  check();
   form.addEventListener("submit", guard(async (ev) => {
     ev.preventDefault();
     const f = ev.target, btn = f.querySelector("button");
