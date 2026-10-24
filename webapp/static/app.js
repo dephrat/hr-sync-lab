@@ -78,7 +78,7 @@ function kv(pairs) {
   return '<dl class="kv">' + pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
 }
 const cur = { worker: null, learner: null, person: null };
-const HINT = '<p class="muted">Press Run sync.</p>';
+const HINT = '<p class="muted">Nothing yet. Press Run sync.</p>';
 // Per-search request counter: a response that is not the newest request is dropped.
 const seq = { wd: 0, sy: 0 };
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
@@ -368,7 +368,7 @@ async function showLearner(l) {
 
 // ---------- Sync ----------
 async function renderSync() {
-  await Promise.all([loadState(), loadQueue(), loadDrift(), loadExplainCampaigns()]);
+  await Promise.all([loadState(), loadQueue(), loadDrift()]);
 }
 async function loadState() {
   const s = await api("api/state");
@@ -412,7 +412,6 @@ function bindGroups(root) {
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
   ["unchanged", "Checked, nothing to change", false, false]];
-const LEGEND = "Needs a person: the sync wrote nothing and is waiting for you. Updated: the sync changed Ethena. Checked, nothing to change: Ethena already matched.";
 function groupHtml(key, title, open, items) {
   const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= 10 ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
   const more = items.length > 10 ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
@@ -431,7 +430,7 @@ async function runSync() {
       ? `<div class="note">Nothing to change: checked ${s.changes_seen} people and Ethena already matches Workday. Running again is always safe.</div>` : "";
     const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
       .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
-    $("sy-result").innerHTML = `<p class="muted legend">${esc(LEGEND)}</p>${note}` +
+    $("sy-result").innerHTML = note +
       (secs || '<p class="muted">No job changes to process.</p>');
     bindGroups($("sy-result"));
     await Promise.all([loadState(), loadQueue(), loadDrift()]);
@@ -471,7 +470,7 @@ async function loadQueue() {
     ["Person", (q) => `${esc(q.worker_name)}<div class="help">${esc(q.worker_id)}</div>`],
     ["Details", (q) => esc(detailOf(q))], ["Waiting", (q) => esc(ageOf(q.created_at))],
     ["What you can do", (q) => queueActions(q)],
-  ]);
+  ], false, $("sy-all").checked ? "Nothing in the queue yet, open or closed." : "Nothing is waiting for a person.");
   box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", guard(() => queueAct(b))));
 }
 function queueActions(q) {
@@ -523,7 +522,6 @@ async function showPerson(w) {
   cur.person = w;
   const d = await api("api/workers/" + encodeURIComponent(w.id));
   const wk = d.worker || {}, l = d.learner;
-  $("ex-worker").value = wk.id || w.id;
   let lcard;
   if ((d.candidates || []).length > 1) lcard = `<p>Two learners match this email: ${esc(d.candidates.map((c) => c.id).join(", "))}</p>`;
   else if (!l) lcard = "<p>No learner mapped yet</p>";
@@ -539,20 +537,19 @@ async function showPerson(w) {
       ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
     <h4>Sync activity, newest first</h4>` + ((d.audit || []).length ? table(d.audit, [
       ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
-      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>");
+      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") +
+    `<h4>Why isn't ${esc(wk.descriptor || w.id)} in a course?</h4>
+    <form id="ex-form" class="row"><select id="ex-campaign">${options((await campaigns()).map((c) => c.campaignName))}</select>
+    <button class="primary">Explain</button></form><div id="ex-out"></div>`;
+  $("ex-form").addEventListener("submit", guard((ev) => explain(ev, wk.id || w.id)));
 }
-async function loadExplainCampaigns() {
-  const sel = $("ex-campaign");
-  if (sel.options.length) return;
-  sel.innerHTML = options((await campaigns()).map((c) => c.campaignName));
-}
-async function explain(ev) {
+async function explain(ev, workerId) {
   ev.preventDefault();
   $("ex-out").innerHTML = '<p class="muted">Working...</p>';
   let r;
   try {
     r = await api("api/explain", { method: "POST",
-      body: { worker_id: $("ex-worker").value.trim(), campaign_name: $("ex-campaign").value } });
+      body: { worker_id: workerId, campaign_name: $("ex-campaign").value } });
   } catch (e) { $("ex-out").innerHTML = ""; throw e; }
   $("ex-out").innerHTML = `<blockquote>${esc(r.sentence)}</blockquote>`;
 }
@@ -582,7 +579,7 @@ async function reset() {
   if (!confirm("Reset the demo? All three databases are reseeded.")) return;
   const r = await api("api/reset", { method: "POST" });
   campaignCache = null;
-  ["wd-detail", "et-detail", "sy-detail", "sy-results", "ex-out"].forEach((id) => { $(id).innerHTML = ""; });
+  ["wd-detail", "et-detail", "sy-detail", "sy-results"].forEach((id) => { $(id).innerHTML = ""; });
   $("sy-result").innerHTML = HINT;
   ["wd-q", "et-q", "sy-q"].forEach((id) => { $(id).value = ""; });
   $("sy-all").checked = false;
@@ -600,7 +597,6 @@ $("sy-run").addEventListener("click", guard(runSync));
 $("sy-bad").addEventListener("click", guard(badDay));
 $("sy-all").addEventListener("change", guard(loadQueue));
 $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
-$("sy-explain").addEventListener("submit", guard(explain));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 initHire();
 route();

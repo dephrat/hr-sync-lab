@@ -59,24 +59,18 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <div id="sy-state" class="strip"></div>
     <p><button id="sy-run" class="primary">Run sync</button> <button id="sy-bad" class="warn">Demo a bad day</button></p>
     <p class="muted">Injects a messy Monday: job changes Ethena has not heard about, a duplicate account, missing people, overdue training.</p>
-    <div id="sy-result"><p class="muted">Press Run sync.</p></div>
+    <h3>What the last run did</h3>
+    <p class="muted">Every person the sync looked at, grouped by what happened to them.</p>
+    <div id="sy-result"><p class="muted">Nothing yet. Press Run sync.</p></div>
     <h3>Review queue</h3>
-    <p class="muted">The sync stopped on these and left them for a person.
-      <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>
-    <p class="muted">Resolve maps the person to the Ethena learner you pick, then re-runs their change. Skip closes the item without touching Ethena.</p>
+    <p class="muted">People the sync would not decide about on its own. Resolve picks the right Ethena account and re-runs; Skip closes the item without touching Ethena.
+      <label class="inline"><input type="checkbox" id="sy-all"> include closed items</label></p>
     <div id="sy-queue"></div>
     <h3>Look up a person</h3>
+    <p class="muted">See one person in both systems, everything the sync did to them, and why they are or are not in a course.</p>
     <input id="sy-q" class="search" placeholder="Search workers by name, id, email, job profile or location">
     <div id="sy-results"></div>
     <div id="sy-detail"></div>
-    <h3>Why isn't this person in a campaign?</h3>
-    <form id="sy-explain" class="row">
-      <input id="ex-worker" placeholder="Worker id, e.g. W-1001" required>
-      <select id="ex-campaign"></select>
-      <button class="primary">Explain</button>
-    </form>
-    <p class="muted">Clicking a person in the lookup fills the worker id.</p>
-    <div id="ex-out"></div>
   </section>
   <section id="tab-ethena" class="panel theme-ethena" data-accent="ethena">
     <div class="et-app">
