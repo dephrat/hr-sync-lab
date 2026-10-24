@@ -158,6 +158,7 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         changes = hris.job_changes_since(completed_from)
     except (HrSyncClientError, httpx.HTTPError):
         summary.failed = 1
+        store.record_run(store_conn, summary.to_dict(), started_at)
         return summary
     for change in changes:
         summary.changes_seen += 1

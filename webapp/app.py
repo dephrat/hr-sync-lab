@@ -10,6 +10,7 @@ from hrsync import store
 from hrsync.config import Settings
 from hrsync.seeding import seed_all
 from reconcile import report
+from webapp import api
 from webapp.clients import make_bundle
 
 STATIC = Path(__file__).with_name("static")
@@ -27,6 +28,7 @@ def create_app(settings: Settings) -> FastAPI:
     bundle = make_bundle(settings)
     app = FastAPI(title="hr-sync-lab demo")
     app.state.bundle = bundle
+    app.include_router(api.router)
     app.mount("/workday", bundle.hris_app)
     app.mount("/ethena", bundle.ethena_app)
 

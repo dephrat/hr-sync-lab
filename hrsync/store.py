@@ -85,3 +85,12 @@ def last_run(conn) -> dict | None:
     if row is None:
         return None
     return {**json.loads(row[2]), "run_id": row[0], "started_at": row[1]}
+
+
+def skip_item(conn, item_id: int, note: str, at: str) -> bool:
+    """Close an open review item as skipped without touching Ethena. False when the item is
+    missing or not open."""
+    cur = conn.execute("UPDATE review_queue SET status='skipped', resolved_at=?, resolution=?"
+                       " WHERE id=? AND status='open'", (at, f"skipped:{note}", item_id))
+    conn.commit()
+    return cur.rowcount == 1

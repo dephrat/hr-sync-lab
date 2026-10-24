@@ -67,6 +67,16 @@ class WorkdayClient:
     def get_job_change(self, change_id: str) -> dict:
         return _send(self.http, "GET", f"/jobChanges/{change_id}").json()
 
+    def list_workers(self) -> list[dict]:
+        out, offset = [], 0
+        while True:
+            body = _send(self.http, "GET", "/workers",
+                         params={"limit": self.PAGE, "offset": offset}).json()
+            out += body["data"]
+            offset += len(body["data"])
+            if len(body["data"]) < self.PAGE or offset >= body["total"]:
+                return out
+
     def job_changes_since(self, completed_from: str) -> list[dict]:
         out, offset = [], 0
         while True:

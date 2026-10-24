@@ -37,7 +37,10 @@ def make_bundle(settings: Settings) -> Bundle:
     ec = TestClient(ethena_app)
     ec.auth = ("web", settings.ethena_api_key)
     rules_path = Path(settings.rules_path)
-    if not rules_path.is_absolute() and not rules_path.exists():
-        rules_path = Path(engine.__file__).parent / rules_path.name
+    # Fall back to the packaged file only for the default setting; a custom path that is
+    # missing should fail loudly in load_rules.
+    default = Path(engine.__file__).parent / "rules.default.json"
+    if settings.rules_path == "hrsync/rules.default.json" and not rules_path.exists():
+        rules_path = default
     return Bundle(settings, hris_app, ethena_app, WorkdayClient(hc), EthenaClient(ec),
                   load_rules(rules_path))

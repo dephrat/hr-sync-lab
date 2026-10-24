@@ -276,3 +276,13 @@ def test_summary_buckets_sum_to_changes_seen(env):
     post_change(env, env["facts"]["absent_workers"][0])
     s2 = run(env)
     assert s2.changes_seen >= 1 and bucket_total(s2) == s2.changes_seen
+
+
+def test_failed_changes_fetch_is_recorded(env, monkeypatch):
+    def boom(_since):
+        raise RateLimited(1)
+    monkeypatch.setattr(env["hris"], "job_changes_since", boom)
+    s = run(env)
+    assert s.failed == 1
+    last = store.last_run(env["db"])
+    assert last["run_id"] == s.run_id and last["failed"] == 1

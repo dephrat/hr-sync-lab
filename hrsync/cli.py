@@ -127,9 +127,7 @@ def _resolve(settings: Settings, args) -> int:
     now = datetime.now(UTC)
     at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     if args.skip:
-        conn.execute("UPDATE review_queue SET status='skipped', resolved_at=?, resolution=?"
-                     " WHERE id=?", (at, f"skipped:{args.note}", args.id))
-        conn.commit()
+        store.skip_item(conn, args.id, args.note, at)
         print(f"item {args.id} skipped")
         return 0
     hris, learning = _build_clients(settings)
