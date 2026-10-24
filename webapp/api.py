@@ -257,7 +257,9 @@ def skip(item_id: int, body: SkipIn, request: Request):
 
 
 @router.get("/workers")
-def search_workers(request: Request, q: str = "", limit: int = Query(25, ge=1, le=500)):
+def search_workers(request: Request, q: str = "", limit: int = Query(25, ge=1, le=500),
+                   offset: int = Query(0, ge=0)):
+    """Filtered, paged worker list: {"total", "data"} like the mock's own envelopes."""
     b = _bundle(request)
     needle = q.strip().lower()
     out = []
@@ -273,9 +275,7 @@ def search_workers(request: Request, q: str = "", limit: int = Query(25, ge=1, l
                     "location": w["location"]["descriptor"],
                     "department": w["primarySupervisoryOrganization"]["descriptor"],
                     "isManager": w["isManager"], "workerStatus": w["workerStatus"]})
-        if len(out) == limit:
-            break
-    return out
+    return {"total": len(out), "data": out[offset:offset + limit]}
 
 
 @router.get("/workers/{worker_id}")

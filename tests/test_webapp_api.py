@@ -80,15 +80,18 @@ def test_skip_item(client):
 
 
 def test_workers_search(client):
-    r = client.get("/api/workers", params={"q": "W-1038"}).json()
+    r = client.get("/api/workers", params={"q": "W-1038"}).json()["data"]
     assert len(r) == 1 and r[0]["id"] == "W-1038"
-    assert len(client.get("/api/workers", params={"q": "a"}).json()) <= 25
-    warehouse = client.get("/api/workers", params={"q": "warehouse"}).json()
+    assert len(client.get("/api/workers", params={"q": "a"}).json()["data"]) <= 25
+    warehouse = client.get("/api/workers", params={"q": "warehouse"}).json()["data"]
     assert warehouse and all("Warehouse" in w["jobProfile"] for w in warehouse)
-    toronto = client.get("/api/workers", params={"q": "toronto"}).json()
+    toronto = client.get("/api/workers", params={"q": "toronto"}).json()["data"]
     assert toronto and all(w["location"] == "Toronto, ON" for w in toronto)
-    everyone = client.get("/api/workers", params={"limit": 500}).json()
-    assert len(everyone) == 100
+    body = client.get("/api/workers", params={"limit": 500}).json()
+    assert body["total"] >= 100 and len(body["data"]) == body["total"]
+    page2 = client.get("/api/workers", params={"limit": 25, "offset": 25}).json()
+    page1_ids = {w["id"] for w in client.get("/api/workers", params={"limit": 25}).json()["data"]}
+    assert len(page2["data"]) == 25 and page2["data"][0]["id"] not in page1_ids
 
 
 def test_worker_detail_has_audit_after_run(client):

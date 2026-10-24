@@ -147,21 +147,32 @@ async function loadApprovals() {
     }
   })));
 }
-let wdShowAll = false;
+let wdPage = 0;
+const WD_PAGE = 25;
 async function loadWorkers() {
   const q = $("wd-q").value.trim(), n = ++seq.wd;
-  const rows = await api("api/workers?q=" + encodeURIComponent(q) + (wdShowAll ? "&limit=500" : ""));
+  const d = await api("api/workers?q=" + encodeURIComponent(q) + `&limit=${WD_PAGE}&offset=${wdPage * WD_PAGE}`);
   if (n !== seq.wd) return;
+  if (wdPage && !d.data.length) { wdPage = 0; return loadWorkers(); } // filter shrank the list
+  const rows = d.data;
   const box = $("wd-table");
   box.innerHTML = table(rows, [
     ["Name", (w) => esc(w.descriptor)],
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? '<span class="st-term">Terminated</span>' : '<span class="st-act">Active</span>')],
-  ], true, `No workers match "${q}"`) + (!wdShowAll && rows && rows.length === 25 ? '<p class="muted">Showing the first 25. <a href="#" id="wd-all">Show everyone</a></p>' : "");
+  ], true, `No workers match "${q}"`) + pager(d.total);
   bindRows(box, rows, showWorker);
-  const all = box.querySelector("#wd-all");
-  if (all) all.addEventListener("click", guard((ev) => { ev.preventDefault(); wdShowAll = true; return loadWorkers(); }));
+  box.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", guard(() => {
+    wdPage += +b.dataset.pg; return loadWorkers();
+  })));
+}
+function pager(total) {
+  if (total <= WD_PAGE) return "";
+  const from = wdPage * WD_PAGE + 1, to = Math.min(total, (wdPage + 1) * WD_PAGE);
+  return `<p class="muted pager"><button type="button" class="plain" data-pg="-1"${wdPage ? "" : " disabled"}>\u2039</button>` +
+    ` ${from}\u2013${to} of ${total} ` +
+    `<button type="button" class="plain" data-pg="1"${to < total ? "" : " disabled"}>\u203a</button></p>`;
 }
 async function showWorker(w) {
   cur.worker = w;
@@ -480,7 +491,7 @@ async function queueAct(b) {
 async function searchPeople() {
   const q = $("sy-q").value.trim(), box = $("sy-results"), n = ++seq.sy;
   if (!q) { box.innerHTML = ""; return; }
-  const rows = await api("api/workers?q=" + encodeURIComponent(q));
+  const rows = (await api("api/workers?q=" + encodeURIComponent(q))).data;
   if (n !== seq.sy) return;
   box.innerHTML = table(rows, [["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
     ["Email", (w) => esc(w.primaryWorkEmail)], ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)]], true,
@@ -562,7 +573,7 @@ async function reset() {
 
 window.addEventListener("hashchange", route);
 $("reset").addEventListener("click", guard(reset));
-$("wd-q").addEventListener("input", debounce(guard(loadWorkers)));
+$("wd-q").addEventListener("input", debounce(guard(() => { wdPage = 0; return loadWorkers(); })));
 $("et-q").addEventListener("input", debounce(filterLearners, 150));
 $("sy-run").addEventListener("click", guard(runSync));
 $("sy-all").addEventListener("change", guard(loadQueue));
