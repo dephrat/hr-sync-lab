@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 
 from hrsync import engine, store
 from hrsync import rules as rules_mod
-from hris.db import JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, profile_descriptor
+from ethena import db as ethena_db
+from ethena.db import normalize_audience
+from hris.db import DEPARTMENTS, JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, profile_descriptor
 from hrsync.engine import ATTR_KEYS
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
@@ -300,10 +302,10 @@ def worker_detail(request: Request, worker_id: str = Path(pattern=WORKER_ID)):
             "enrollments": status["campaigns"], "audit": audit}
 
 
-def _audience_text(aud: dict) -> str:
+def _group_text(g: dict) -> str:
     # The stored rule as field = value, unreworded, so what the page shows is the data.
     parts = []
-    for key, val in aud.items():
+    for key, val in g.items():
         if isinstance(val, list):
             val = ", ".join(map(str, val))
         elif isinstance(val, bool):
@@ -312,20 +314,100 @@ def _audience_text(aud: dict) -> str:
     return " \u00b7 ".join(parts) or "everyone (no rules)"
 
 
+def _audience_text(aud) -> str:
+    groups = normalize_audience(aud)
+    if not groups:
+        return "nobody (no groups)"
+    return " OR ".join(_group_text(g) for g in groups)
+
+
+def _group_edit(g: dict) -> dict:
+    """A stored group in the editable shape the page uses."""
+    country = (g.get("country") or [None])[0]
+    region = (g.get("customCategory") or g.get("state") or [None])[0]
+    return {"country": country, "region": region, "isManager": g.get("isManager"),
+            "department": (g.get("department") or [None])[0]}
+
+
+def _read_audiences(path) -> dict:
+    conn = sqlite3.connect(path)
+    try:
+        return {cid: normalize_audience(json.loads(a)) for cid, a in
+                conn.execute("SELECT id, audience FROM campaigns")}
+    finally:
+        conn.close()
+
+
+def _campaign_view(c: dict, groups: list[dict]) -> dict:
+    return {"id": c["id"], "campaignName": c["campaignName"], "courseName": c["courseName"],
+            "audience_text": _audience_text(groups), "groups": [_group_edit(g) for g in groups]}
+
+
 @router.get("/campaigns")
 def campaigns(request: Request):
     b = _bundle(request)
     # The Ethena API does not expose a campaign's audience. This reads the mock's sqlite file
     # directly, only to display it; the sync itself never does this.
-    conn = sqlite3.connect(b.settings.ethena_db)
-    try:
-        auds = {cid: json.loads(a) for cid, a in
-                conn.execute("SELECT id, audience FROM campaigns")}
-    finally:
-        conn.close()
-    return [{"id": c["id"], "campaignName": c["campaignName"], "courseName": c["courseName"],
-             "audience_text": _audience_text(auds.get(c["id"], {}))}
-            for c in b.learning.list_campaigns()]
+    auds = _read_audiences(b.settings.ethena_db)
+    return [_campaign_view(c, auds.get(c["id"], [{}])) for c in b.learning.list_campaigns()]
+
+
+class GroupIn(BaseModel):
+    country: str | None = None
+    region: str | None = None
+    isManager: bool | None = None
+    department: str | None = None
+
+
+class AudienceIn(BaseModel):
+    groups: list[GroupIn]
+
+
+@router.put("/campaigns/{campaign_id}/audience")
+def put_audience(body: AudienceIn, request: Request,
+                 campaign_id: str = Path(pattern=r"^[A-Za-z0-9]+$")):
+    ch = rules_mod.CHOICES
+    stored = []
+    for g in body.groups:
+        if g.country is not None and g.country not in _valid(ch["countries"]):
+            return _err(422, f"unknown country {g.country!r}")
+        if g.region is not None:
+            if g.country is None:
+                return _err(422, "a province or state needs a country")
+            if g.region not in _valid(ch["regions"][g.country]):
+                return _err(422, f"region {g.region!r} does not belong to country {g.country}")
+        if g.department is not None and g.department not in DEPARTMENTS:
+            return _err(422, f"unknown department {g.department!r}")
+        out = {}
+        if g.country:
+            out["country"] = [g.country]
+        if g.region:
+            out["state" if g.country == "USA" else "customCategory"] = [g.region]
+        if g.isManager is not None:
+            out["isManager"] = g.isManager
+        if g.department:
+            out["department"] = [g.department]
+        stored.append(out)
+    b = _bundle(request)
+    # This edits the mock's store directly: real Ethena audiences are set in its admin UI,
+    # not through its API, so there is no API call to make. Ethena's audience engine then
+    # enrolls matching people itself, which is what enroll() does here. Never un-enrolls.
+    with WRITE_LOCK:
+        conn = ethena_db.connect(b.settings.ethena_db)
+        try:
+            if conn.execute("SELECT 1 FROM campaigns WHERE id=?", (campaign_id,)).fetchone() is None:
+                return _err(404, "unknown campaign")
+            conn.execute("UPDATE campaigns SET audience=? WHERE id=?",
+                         (json.dumps(stored), campaign_id))
+            conn.commit()
+            for (lid,) in conn.execute("SELECT id FROM learners WHERE status='ACTIVE'").fetchall():
+                ethena_db.enroll(conn, lid)
+        finally:
+            conn.close()
+    c = next((c for c in b.learning.list_campaigns() if c["id"] == campaign_id), None)
+    if c is None:
+        return _err(404, "unknown campaign")
+    return _campaign_view(c, stored)
 
 
 @router.post("/explain")
@@ -458,50 +540,56 @@ class JobIn(BaseModel):
     isManager: bool | None = None
 
 
-def _audiences(b) -> list[tuple[str, dict]]:
-    """(campaignName, audience) for every campaign. Read from the mock's sqlite for display
+def _audiences(b) -> list[tuple[str, list[dict]]]:
+    """(campaignName, groups) for every campaign. Read from the mock's sqlite for display
     only; the Ethena API does not expose audiences and the sync never reads them."""
     conn = sqlite3.connect(b.settings.ethena_db)
     try:
-        return [(name, json.loads(aud)) for name, aud in
+        return [(name, normalize_audience(json.loads(aud))) for name, aud in
                 conn.execute("SELECT campaign_name, audience FROM campaigns WHERE status='ACTIVE'")]
     finally:
         conn.close()
 
 
 def _office_courses(auds, row) -> list[str]:
-    """Location-based courses an office leads to: campaigns that key on country/region."""
+    """Location-based courses an office leads to: campaigns where any group keys on
+    country/region and matches."""
     if not row.get("country"):
         return []
     region = row.get("region")
     out = []
-    for name, a in auds:
-        if not ({"country", "state", "customCategory"} & a.keys()):
-            continue
-        if "country" in a and row["country"] not in a["country"]:
-            continue
-        if "state" in a and region not in a["state"]:
-            continue
-        if a.get("customCategory") and region not in a["customCategory"]:
-            continue
-        if "isManager" in a:
-            name += " if a manager" if a["isManager"] else " if not a manager"
-        out.append(name)
+    for name, groups in auds:
+        for a in groups:
+            if not ({"country", "state", "customCategory"} & a.keys()):
+                continue
+            if "country" in a and row["country"] not in a["country"]:
+                continue
+            if "state" in a and region not in a["state"]:
+                continue
+            if a.get("customCategory") and region not in a["customCategory"]:
+                continue
+            if "isManager" in a:
+                name += " if a manager" if a["isManager"] else " if not a manager"
+            out.append(name)
+            break
     return out
 
 
 def _job_courses(auds, row) -> list[str]:
-    """Role-based courses a job leads to: campaigns that key only on manager and department."""
+    """Role-based courses a job leads to: campaigns where any group keys only on manager
+    and department and matches."""
     out = []
     dept = PROFILE_DEPARTMENT.get(row["job"])
-    for name, a in auds:
-        if not a or not a.keys() <= {"isManager", "department"}:
-            continue
-        if "isManager" in a and row.get("isManager") is not a["isManager"]:
-            continue
-        if "department" in a and dept not in a["department"]:
-            continue
-        out.append(name)
+    for name, groups in auds:
+        for a in groups:
+            if not a or not a.keys() <= {"isManager", "department"}:
+                continue
+            if "isManager" in a and row.get("isManager") is not a["isManager"]:
+                continue
+            if "department" in a and dept not in a["department"]:
+                continue
+            out.append(name)
+            break
     return out
 
 
@@ -516,8 +604,8 @@ def get_rules(request: Request):
         r["courses"] = _office_courses(auds, r)
     for r in jobs:
         r["courses"] = _job_courses(auds, r)
-    return {"offices": offices, "jobs": jobs, "everyone": [n for n, a in auds if not a],
-            "choices": rules_mod.CHOICES}
+    return {"offices": offices, "jobs": jobs, "everyone": [n for n, gs in auds if any(not g for g in gs)],
+            "choices": rules_mod.CHOICES, "departments": DEPARTMENTS}
 
 
 @router.put("/rules/office")

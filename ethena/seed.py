@@ -24,15 +24,15 @@ LOCATION_MAP = {  # HRIS location -> (country, state, customCategory)
 }
 CAMPAIGNS = [  # (id, course, name, audience)
     ("C000001", "Harassment Prevention", "Harassment Prevention (Ontario)",
-     {"country": ["CAN"], "customCategory": ["ON"]}),
+     [{"country": ["CAN"], "customCategory": ["ON"]}]),
     ("C000002", "Harassment Prevention", "Harassment Prevention (US Managers)",
-     {"country": ["USA"], "isManager": True}),
+     [{"country": ["USA"], "isManager": True}]),
     ("C000003", "Harassment Prevention", "Harassment Prevention (US Employees)",
-     {"country": ["USA"], "isManager": False}),
-    ("C000004", "Manager Fundamentals", "Manager Fundamentals", {"isManager": True}),
-    ("C000005", "Data Privacy Essentials", "Data Privacy Essentials", {}),
+     [{"country": ["USA"], "isManager": False}]),
+    ("C000004", "Manager Fundamentals", "Manager Fundamentals", [{"isManager": True}]),
+    ("C000005", "Data Privacy Essentials", "Data Privacy Essentials", [{}]),
     ("C000006", "Workplace Safety", "Workplace Safety (Warehouse)",
-     {"department": ["Operations"]}),
+     [{"department": ["Operations"]}]),
 ]
 
 

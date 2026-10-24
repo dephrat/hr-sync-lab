@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     initial_training_at TEXT,
     next_training_at TEXT,
     deadline_in_days INTEGER NOT NULL,
-    audience TEXT NOT NULL DEFAULT '{}'
+    audience TEXT NOT NULL DEFAULT '[{}]'
 );
 CREATE TABLE IF NOT EXISTS enrollments (
     id TEXT PRIMARY KEY,
@@ -62,15 +62,28 @@ def _iso(dt) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def audience_matches(audience: dict, learner) -> bool:
-    """Every key present in the audience must match; {} matches everyone."""
-    if "isManager" in audience and bool(learner["is_manager"]) != audience["isManager"]:
+def normalize_audience(audience) -> list[dict]:
+    """An audience is a list of groups (OR). The old single-dict form {...} reads as [{...}]."""
+    if isinstance(audience, dict):
+        return [audience]
+    return list(audience or [])
+
+
+def _group_matches(group: dict, learner) -> bool:
+    """Every key present in the group must match; {} matches everyone."""
+    if "isManager" in group and bool(learner["is_manager"]) != group["isManager"]:
         return False
     for key, col in (("country", "country"), ("state", "state"),
                      ("customCategory", "custom_category"), ("department", "department")):
-        if key in audience and learner[col] not in audience[key]:
+        if key in group and learner[col] not in group[key]:
             return False
     return True
+
+
+def audience_matches(audience, learner) -> bool:
+    """A learner matches if they match ANY group; a group matches if every key matches.
+    [] matches nobody, [{}] matches everyone, a bare dict is read as a single group."""
+    return any(_group_matches(g, learner) for g in normalize_audience(audience))
 
 
 def enroll(conn, learner_id: str) -> None:

@@ -269,11 +269,55 @@ async function renderEthena() {
   learners = await api("api/learners");
   filterLearners();
   renderStats();
+  await renderCourses();
+}
+// Each course is a card with one row per audience group (OR between rows, AND within a row).
+async function renderCourses() {
+  campaignCache = null;
   const cs = await campaigns();
-  $("et-campaigns").innerHTML = (cs && cs.length) ? '<ul class="camp-rows">' + cs.map((c, i) =>
-    `<li class="camp"><span class="thumb t${i % 4}" aria-hidden="true"></span>` +
-    `<div><h4>${esc(c.campaignName)}</h4><p class="muted">${esc(c.audience_text)}</p></div>` +
-    `<span class="tpill">${esc(c.courseName)}</span></li>`).join("") + "</ul>" : '<p class="muted">none</p>';
+  if (!(cs && cs.length)) { $("et-campaigns").innerHTML = '<p class="muted">none</p>'; return; }
+  const r = await api("api/rules");
+  const ch = r.choices, depts = r.departments.map((d) => ({ value: d, label: d }));
+  const yn = [{ value: "yes", label: "yes" }, { value: "no", label: "no" }];
+  const row = (g, many) => `<tr class="grp">` +
+    `<td><select class="g-country" aria-label="Country">${opts(ch.countries, g.country, "anyone")}</select></td>` +
+    `<td><select class="g-region" aria-label="Province or state"${g.country ? "" : " disabled"}>${opts(g.country ? ch.regions[g.country] : [], g.region, "anyone")}</select></td>` +
+    `<td><select class="g-mgr" aria-label="Manager">${opts(yn, g.isManager === null ? "" : g.isManager ? "yes" : "no", "anyone")}</select></td>` +
+    `<td><select class="g-dept" aria-label="Department">${opts(depts, g.department, "anyone")}</select></td>` +
+    `<td>${many ? '<a href="#" class="g-del">remove</a>' : ""}</td></tr>`;
+  $("et-campaigns").innerHTML = '<ul class="camp-rows">' + cs.map((c, i) =>
+    `<li class="camp" data-id="${esc(c.id)}"><span class="thumb t${i % 4}" aria-hidden="true"></span>` +
+    `<div><h4>${esc(c.campaignName)}</h4>` +
+    `<table class="rules aud"><thead><tr><th>Country</th><th>Province or state</th><th>Manager</th><th>Department</th><th></th></tr></thead><tbody>` +
+    (c.groups.length ? c.groups.map((g) => row(g, c.groups.length > 1)).join('<tr class="or"><td colspan="5" class="muted">or</td></tr>')
+      : '<tr><td colspan="5" class="muted">nobody (no groups)</td></tr>') +
+    `</tbody></table><a href="#" class="g-add">+ or another group</a></div>` +
+    `<span class="tpill">${esc(c.courseName)}</span></li>`).join("") + "</ul>";
+  const save = async (li, groups) => {
+    await api("api/campaigns/" + encodeURIComponent(li.dataset.id) + "/audience",
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ groups }) });
+    toast("Saved. Ethena updated who gets this course.");
+    learners = await api("api/learners");
+    filterLearners(); renderStats();
+    await renderCourses();
+  };
+  const read = (li) => [...li.querySelectorAll("tr.grp")].map((tr) => {
+    const country = tr.querySelector(".g-country").value, m = tr.querySelector(".g-mgr").value;
+    return { country: country || null, region: country ? tr.querySelector(".g-region").value || null : null,
+      isManager: m === "" ? null : m === "yes", department: tr.querySelector(".g-dept").value || null };
+  });
+  $("et-campaigns").querySelectorAll("li.camp").forEach((li) => {
+    li.querySelectorAll("tr.grp").forEach((tr) => {
+      tr.querySelector(".g-country").addEventListener("change", () => { tr.querySelector(".g-region").value = ""; guard(save)(li, read(li)); });
+      tr.querySelectorAll("select:not(.g-country)").forEach((sel) => sel.addEventListener("change", () => guard(save)(li, read(li))));
+      const del = tr.querySelector(".g-del");
+      if (del) del.addEventListener("click", (ev) => { ev.preventDefault(); tr.remove(); guard(save)(li, read(li)); });
+    });
+    li.querySelector(".g-add").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      guard(save)(li, [...read(li), { country: null, region: null, isManager: null, department: null }]);
+    });
+  });
 }
 // Admin-hub style counts across every enrollment.
 function renderStats() {
@@ -409,7 +453,7 @@ async function loadRules() {
     (j.isManager === null ? ' <span class="tag-amber">not set</span>' : "") + "</td>" +
     `<td><select class="r-mgr" aria-label="Manager for ${esc(j.label)}">${opts(triple, j.isManager === null ? "" : j.isManager ? "yes" : "no", "not set")}</select></td>` +
     `<td>${courses(j.courses)}</td></tr>`;
-  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th><th>So they get</th></tr>` +
+  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th><th><a href="#ethena/courses">So they get (set in Ethena)</a></th></tr>` +
     `<tr class="sub"><th>${first}</th><th>${a}</th>${b ? `<th>${b}</th>` : ""}<th></th></tr></thead>`;
   $("sy-rules").innerHTML =
     `<h4>By office</h4><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table>` +

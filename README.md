@@ -48,6 +48,8 @@ One `hrsync run` (add `--changes-only` to skip the final step on a large tenant)
 
 `webapp/` is a single page that shows the whole story without a terminal. Run it locally with `uv run hrsync seed && uv run hrsync web`, then open http://127.0.0.1:8003/. The page runs behind a secret path on a private host; deploy/README.md has the procedure.
 
+Course audiences are editable in the mock Ethena (Courses sub-tab): each course takes one or more groups (any group matching is enough), and changing them enrolls matching people straight away, as Ethena's own audience engine would.
+
 The page opens clean: Workday and Ethena agree on all 100 people, and the out-of-sync panel on the Sync tab is empty. The main story:
 
 1. In the Sync tab, press **Demo a bad day**. It injects a messy Monday: 12 job changes Ethena has not heard about, a duplicate Ethena account, 3 people missing from Ethena, and 2 overdue enrollments.

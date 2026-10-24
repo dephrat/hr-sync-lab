@@ -19,7 +19,7 @@ One page, four tabs across the top, each a plain text link that swaps the panel 
 ### Ethena tab (mock learning platform)
 - Learner table with search (id, name, email, status, country, state, manager, category).
 - Click a learner: attributes plus enrollments (campaign, status, deadline). Each unfinished enrollment has a **Take course** button that opens a small inline course on a lavender panel: a short lesson, one multiple-choice question, and a Complete course button that unlocks only on the right answer. Completing calls the mock's complete endpoint. One course is open at a time.
-- **Campaigns** sub-list: the six campaigns with their audience rules in words ("managers", "Canada + Ontario"), so the reader sees why a promotion produces those courses.
+- **Courses** sub-tab: one card per campaign with an editable audience table. Each row is a group (Country, Province or state, Manager, Department, each "anyone" by default); a person who matches any row gets the course, and all the choices within a row must match. "+ or another group" adds a row, "remove" drops one. Changes save on change through the web-only `PUT /api/campaigns/{id}/audience`, which writes the mock's store directly (real Ethena sets audiences in its admin UI, not its API) and re-runs enrollment for active learners. It never un-enrolls anyone. The Sync tab's Course rules column "So they get (set in Ethena)" links here.
 
 ### Sync tab
 - Status strip: last run time, watermark, open queue count, failed steps in the last run.
