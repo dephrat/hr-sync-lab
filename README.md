@@ -42,15 +42,15 @@ One `hrsync run`:
 
 ## Demo page
 
-`webapp/` is a single page that shows the whole story without a terminal. Run it locally with `uv run hrsync seed && uv run hrsync web`, then open http://127.0.0.1:8003/. The deployed copy runs in a container behind a secret path; see [deploy/README.md](deploy/README.md).
+`webapp/` is a single page that shows the whole story without a terminal. Run it locally with `uv run hrsync seed && uv run hrsync web`, then open http://127.0.0.1:8003/. The page runs behind a secret path on a private host; deploy/README.md has the procedure.
 
 The story takes six clicks:
 
-1. In the Workday tab, promote someone (Chloe Chen, a Toronto sales rep, becomes a team lead).
-2. In the Ethena tab, check that her learner has no manager course yet.
-3. In the Sync tab, press Run sync.
+1. Open Workday (mock), search for Lucas Fischer (W-1014, a Toronto software engineer), and record a Promotion to Engineering Manager.
+2. In the Ethena tab, check that his learner shows manager = no and has no Manager Fundamentals.
+3. In the Sync tab, press Run sync. The sentence for him reads "Set isManager=true in Ethena. Verified: ..., Manager Fundamentals".
 4. Read the sentences the page prints for each change: what was patched, what was queued and why.
-5. Check Ethena again: her attributes changed and she is enrolled in Manager Fundamentals.
+5. Check Ethena again: his attributes changed and he is enrolled in Manager Fundamentals.
 6. Resolve a queue item in the Sync tab, then read the Report tab to see the drift that is left.
 
 Reset demo puts all three databases back to the seed.
@@ -111,12 +111,12 @@ Neither Workday nor Ethena offers a public sandbox. The mocks follow the publish
 
 ## What's deliberately left out
 
-ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a scheduler (the runbook has the cron line), and real auth on the mocks. The demo page is deployed, but the sync itself is not scheduled anywhere. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
+ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a scheduler (the runbook has the cron line), and real auth on the mocks. The page runs behind a secret path on a private host; deploy/README.md has the procedure. The sync itself is not scheduled anywhere, and the sync itself is not scheduled anywhere. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
 
 ## Tests
 
 ```
-uv run pytest    # 79 tests
+uv run pytest    # 84 tests
 ```
 
 ## Docs

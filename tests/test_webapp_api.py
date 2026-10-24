@@ -122,3 +122,26 @@ def test_noop_job_change_then_run_ok(client):
     body = client.post("/api/run").json()
     mine = [c for c in body["changes"] if c["change_id"] == r.json()["id"]]
     assert mine and mine[0]["outcome"] == "ok" and body["summary"]["failed"] == 0
+
+
+def test_concurrent_runs_process_each_change_once(client):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(2) as ex:
+        rs = list(ex.map(lambda _: client.post("/api/run"), range(2)))
+    assert all(r.status_code == 200 for r in rs)
+    # The later run re-sees the boundary change at the watermark and skips it, so count
+    # only changes that were actually processed.
+    sums = [r.json()["summary"] for r in rs]
+    assert sum(x["changes_seen"] - x["skipped"] for x in sums) == 12
+
+
+def test_bad_learner_id_is_422(client):
+    r = client.post("/api/queue/1/resolve", json={"learner_id": "a b;", "note": ""})
+    assert r.status_code == 422 and "error" in r.json()
+
+
+def test_bad_worker_id_is_422(client):
+    r = client.post("/api/explain", json={"worker_id": "W 1;", "campaign_name": "x"})
+    assert r.status_code == 422 and "error" in r.json()
+    r = client.get("/api/workers/W%201%3B")
+    assert r.status_code == 422 and "error" in r.json()

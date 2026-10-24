@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script>/* behind the proxy the page needs a trailing slash so relative URLs resolve */
+if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search + location.hash);</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hr-sync-lab demo</title>
@@ -46,7 +48,7 @@
     <h2>Sync</h2>
     <div id="sy-state" class="strip"></div>
     <p><button id="sy-run" class="primary">Run sync</button></p>
-    <div id="sy-result"></div>
+    <div id="sy-result"><p class="muted">Press Run sync to carry the pending Workday job changes to Ethena.</p></div>
     <h3>Review queue</h3>
     <p class="muted">Changes the sync could not finish on its own. A person decides what happens next.
       <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>

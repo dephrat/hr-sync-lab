@@ -88,3 +88,14 @@ def test_index_has_tabs_and_no_em_dash(client):
     for title in ("Workday (mock)", "Ethena (mock)", "Sync", "Report"):
         assert title in html
     assert "—" not in html
+
+
+def test_index_has_trailing_slash_redirect_script(client):
+    html = client.get("/").text
+    head = html.split("<head>", 1)[1]
+    assert "location.pathname.endsWith('/')" in head.split("</script>", 1)[0]
+
+
+def test_docs_disabled(client):
+    assert client.get("/docs").status_code == 404
+    assert client.get("/openapi.json").status_code == 404

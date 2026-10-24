@@ -68,7 +68,7 @@ _JC_SELECT = ("SELECT j.*, w.descriptor AS worker_name FROM job_changes j"
 
 
 def create_app(db_path) -> FastAPI:
-    app = FastAPI(title="Mock Workday")
+    app = FastAPI(title="Mock Workday", docs_url=None, redoc_url=None, openapi_url=None)
 
     def get_conn():
         conn = connect(db_path)

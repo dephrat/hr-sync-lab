@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,8 +29,14 @@ def _count(path, table) -> int:
 
 def create_app(settings: Settings) -> FastAPI:
     bundle = make_bundle(settings)
-    app = FastAPI(title="hr-sync-lab demo")
+    app = FastAPI(title="hr-sync-lab demo", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.bundle = bundle
+
+    @app.exception_handler(RequestValidationError)
+    def invalid(request, exc):
+        first = exc.errors()[0]
+        where = ".".join(str(x) for x in first["loc"] if x != "body")
+        return JSONResponse({"error": f"invalid {where}: {first['msg']}"}, status_code=422)
     app.include_router(api.router)
     app.mount("/workday", bundle.hris_app)
     app.mount("/ethena", bundle.ethena_app)
@@ -53,11 +61,12 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/reset")
     def reset():
-        seed_all(settings.hris_db, settings.ethena_db)
-        Path(settings.sync_db).unlink(missing_ok=True)
-        return {"ok": True, "workers": _count(settings.hris_db, "workers"),
-                "learners": _count(settings.ethena_db, "learners"),
-                "changes": _count(settings.hris_db, "job_changes")}
+        with api.WRITE_LOCK:
+            Path(settings.sync_db).unlink(missing_ok=True)
+            seed_all(settings.hris_db, settings.ethena_db)
+            return {"ok": True, "workers": _count(settings.hris_db, "workers"),
+                    "learners": _count(settings.ethena_db, "learners"),
+                    "changes": _count(settings.hris_db, "job_changes")}
 
     @app.get("/api/report")
     def get_report():

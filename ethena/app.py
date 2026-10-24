@@ -80,7 +80,7 @@ def _error(status, title, detail):
 
 
 def create_app(db_path, api_key="test-key") -> FastAPI:
-    app = FastAPI(title="Mock Ethena")
+    app = FastAPI(title="Mock Ethena", docs_url=None, redoc_url=None, openapi_url=None)
     basic = HTTPBasic(auto_error=False)
 
     def get_conn():

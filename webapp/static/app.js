@@ -67,6 +67,9 @@ function bindRows(container, rows, onClick) {
 function kv(pairs) {
   return '<dl class="kv">' + pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
 }
+const HINT = '<p class="muted">Press Run sync to carry the pending Workday job changes to Ethena.</p>';
+// Per-search request counter: a response that is not the newest request is dropped.
+const seq = { wd: 0, sy: 0 };
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 const options = (list, label = (x) => x) => list.map((x) => `<option value="${esc(x)}">${esc(label(x))}</option>`).join("");
 
@@ -78,8 +81,9 @@ async function renderWorkday() {
   await Promise.all([loadWorkers(), loadChanges()]);
 }
 async function loadWorkers() {
-  const q = $("wd-q").value.trim();
+  const q = $("wd-q").value.trim(), n = ++seq.wd;
   const rows = await api("api/workers?q=" + encodeURIComponent(q));
+  if (n !== seq.wd) return;
   const box = $("wd-table");
   box.innerHTML = table(rows, [
     ["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
@@ -243,15 +247,18 @@ async function queueAct(b) {
       const learner = (sel && sel.value) || (free && free.value.trim()) || "";
       if (!learner) { toast("Pick a learner or type a learner id first.", "error"); return; }
       const r = await api(`api/queue/${id}/resolve`, { method: "POST", body: { learner_id: learner, note } });
-      toast(`Re-ran ${r.change_id}: ${r.outcome}`);
+      toast(r.outcome === "queued"
+        ? `Re-ran ${r.change_id}: queued again for another reason, see the queue.`
+        : `Re-ran ${r.change_id}: ${r.outcome}`);
     }
     await Promise.all([loadQueue(), loadState()]);
   } finally { b.disabled = false; }
 }
 async function searchPeople() {
-  const q = $("sy-q").value.trim(), box = $("sy-results");
+  const q = $("sy-q").value.trim(), box = $("sy-results"), n = ++seq.sy;
   if (!q) { box.innerHTML = ""; return; }
   const rows = await api("api/workers?q=" + encodeURIComponent(q));
+  if (n !== seq.sy) return;
   box.innerHTML = table(rows, [["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
     ["Email", (w) => esc(w.primaryWorkEmail)], ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)]], true);
   bindRows(box, rows, showPerson);
@@ -314,7 +321,11 @@ async function reset() {
   if (!confirm("Reset the demo? All three databases are reseeded.")) return;
   const r = await api("api/reset", { method: "POST" });
   campaignCache = null;
-  ["wd-detail", "et-detail", "sy-result", "sy-person", "sy-results", "ex-out"].forEach((id) => { $(id).innerHTML = ""; });
+  ["wd-detail", "et-detail", "sy-person", "sy-results", "ex-out"].forEach((id) => { $(id).innerHTML = ""; });
+  $("sy-result").innerHTML = HINT;
+  ["wd-q", "et-q", "sy-q"].forEach((id) => { $(id).value = ""; });
+  $("sy-all").checked = false;
+  seq.wd++; seq.sy++;
   toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
   route();
 }

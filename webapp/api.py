@@ -1,18 +1,23 @@
 """JSON endpoints for the demo page. Every write goes through the sync engine or store."""
 import json
 import sqlite3
+import threading
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Path, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hrsync import engine, store
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
 
 router = APIRouter(prefix="/api")
+
+# One lock for every write path (run, resolve, skip, reset) so concurrent clicks cannot interleave.
+WRITE_LOCK = threading.Lock()
+WORKER_ID = r"^[A-Za-z0-9-]+$"
 
 # One sentence per reason code, taken from the "What happened" column of docs/runbook.md.
 REASON_HELP: dict[str, str] = {
@@ -31,7 +36,7 @@ REASON_HELP: dict[str, str] = {
 
 
 class ResolveIn(BaseModel):
-    learner_id: str
+    learner_id: str = Field(pattern=r"^[A-Za-z0-9]+$")
     note: str = ""
 
 
@@ -40,7 +45,7 @@ class SkipIn(BaseModel):
 
 
 class ExplainIn(BaseModel):
-    worker_id: str
+    worker_id: str = Field(pattern=WORKER_ID)
     campaign_name: str
 
 
@@ -122,6 +127,11 @@ def _sentence(name, wid, reason, outcome, rows) -> str:
 
 @router.post("/run")
 def run_sync(request: Request):
+    with WRITE_LOCK:
+        return _run_sync(request)
+
+
+def _run_sync(request: Request):
     b = _bundle(request)
     with _Store(request) as conn:
         summary = engine.run(b.hris, b.learning, b.rules, conn)
@@ -183,7 +193,7 @@ def get_queue(request: Request, all: int = 0):
 @router.post("/queue/{item_id}/resolve")
 def resolve(item_id: int, body: ResolveIn, request: Request):
     b = _bundle(request)
-    with _Store(request) as conn:
+    with WRITE_LOCK, _Store(request) as conn:
         try:
             return engine.resolve_with_learner(b.hris, b.learning, b.rules, conn, item_id,
                                                body.learner_id, datetime.now(UTC), body.note)
@@ -196,7 +206,7 @@ def resolve(item_id: int, body: ResolveIn, request: Request):
 @router.post("/queue/{item_id}/skip")
 def skip(item_id: int, body: SkipIn, request: Request):
     at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with _Store(request) as conn:
+    with WRITE_LOCK, _Store(request) as conn:
         if not store.skip_item(conn, item_id, body.note, at):
             return _err(404, f"queue item {item_id} not found or not open")
     return {"item_id": item_id, "status": "skipped"}
@@ -223,7 +233,7 @@ def search_workers(request: Request, q: str = ""):
 
 
 @router.get("/workers/{worker_id}")
-def worker_detail(worker_id: str, request: Request):
+def worker_detail(request: Request, worker_id: str = Path(pattern=WORKER_ID)):
     b = _bundle(request)
     with _Store(request) as conn:
         try:
