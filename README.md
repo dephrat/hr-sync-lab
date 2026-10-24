@@ -4,6 +4,8 @@ Priya, a sales rep in Toronto, is promoted to team lead in Workday on Monday. Co
 
 ![demo: seed, run, queue, resolve, report](demo/demo.gif)
 
+The GIF shows the command line flow and predates the approvals inbox; the hosted page is the current demo.
+
 ## What it does
 
 One `hrsync run` (add `--changes-only` to skip the final step on a large tenant):

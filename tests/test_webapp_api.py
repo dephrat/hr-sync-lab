@@ -110,7 +110,7 @@ def test_campaigns_audience_text(client):
 def test_explain_absent_worker_no_change(client):
     r = client.post("/api/explain", json={"worker_id": "W-1008",
                                           "campaign_name": "Manager Fundamentals"})
-    assert r.status_code == 200 and "No job change" in r.json()["sentence"]
+    assert r.status_code == 200 and "No sync has processed" in r.json()["sentence"]
     assert client.post("/api/explain", json={"worker_id": "W-1008"}).status_code == 422
     assert client.post("/api/explain", json={"worker_id": "W-9999",
                                              "campaign_name": "Manager Fundamentals"}).status_code == 404

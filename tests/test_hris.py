@@ -179,3 +179,41 @@ def test_deny_removes_pending_change(client):
     assert r.status_code == 200 and r.json()["status"] == "DENIED"
     assert client.get(f"/jobChanges/{jc['id']}").status_code == 404
     assert client.get("/workers/W-1004").json() == before
+
+
+def test_approve_revalidates(client):
+    jc = _pending(client, "W-1003")
+    term = client.post("/jobChanges", json={"workerId": "W-1003", "effectiveDate": "2026-10-02",
+                                            "reason": "Termination"}).json()
+    assert client.post(f"/jobChanges/{term['id']}/approve").status_code == 200
+    r = client.post(f"/jobChanges/{jc['id']}/approve")
+    assert r.status_code == 422 and "left the company" in r.json()["detail"]
+    assert client.post(f"/jobChanges/{jc['id']}/deny").status_code == 200
+
+
+def test_approve_noop_change_rejected(client):
+    a = _pending(client, "W-1006")
+    b = client.post("/jobChanges", json={"workerId": "W-1006", "effectiveDate": "2026-10-03",
+                                         "reason": "Transfer", "location": "Remote - Canada"})
+    assert b.status_code == 201
+    assert client.post(f"/jobChanges/{a['id']}/approve").status_code == 200
+    r = client.post(f"/jobChanges/{b.json()['id']}/approve")
+    assert r.status_code == 422 and "no longer changes anything" in r.json()["detail"]
+    assert client.post(f"/jobChanges/{b.json()['id']}/deny").status_code == 200
+
+
+def test_migration_finishes_interrupted_copy(tmp_path):
+    import sqlite3
+    p = tmp_path / "old.db"
+    raw = sqlite3.connect(p)
+    raw.executescript(
+        "CREATE TABLE job_changes_old (seq INTEGER PRIMARY KEY, worker_id TEXT, effective_date TEXT,"
+        " completed_date TEXT, reason TEXT, job_profile TEXT, location TEXT, business_title TEXT,"
+        " department TEXT);"
+        "INSERT INTO job_changes_old VALUES (7,'W-1','2026-01-01','2026-01-02T00:00:00Z','Hire',"
+        "NULL,NULL,NULL,NULL);")
+    raw.commit()
+    raw.close()
+    conn = connect(p)
+    assert conn.execute("SELECT seq, status FROM job_changes").fetchall()[0][:] == (7, "completed")
+    assert conn.execute("SELECT 1 FROM sqlite_master WHERE name='job_changes_old'").fetchone() is None

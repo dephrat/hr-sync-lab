@@ -151,3 +151,32 @@ def test_stdio_smoke(tmp_path):
 def test_rerun_sync_is_full(env):
     r = tools.rerun_sync(env["hris"], env["learning"], env["rules"], env["db"], True)
     assert r["changes_seen"] > 12 and r["failed"] == 0
+
+
+def test_explain_gap_recon_item_sentence(env):
+    env["db"].execute("INSERT INTO review_queue (change_id, worker_id, reason, detail, status,"
+                      " created_at) VALUES ('RECON-W-1001','W-1001','UNKNOWN_PROFILE','x','open','t')")
+    env["db"].execute("DELETE FROM id_map WHERE worker_id='W-1001'")
+    env["db"].execute("DELETE FROM review_queue WHERE worker_id='W-1001' AND change_id!='RECON-W-1001'")
+    text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], "W-1001", "C")
+    assert text.startswith("A reconcile check queued ") and "RECON-" not in text
+
+
+def test_explain_gap_pending_change_sentence(env):
+    wid = "W-1001"
+    env["db"].execute("DELETE FROM audit WHERE worker_id=?", (wid,))
+    env["db"].execute("DELETE FROM review_queue WHERE worker_id=?", (wid,))
+    env["db"].execute("DELETE FROM id_map WHERE worker_id=?", (wid,))
+    env["hris"].http.post("/jobChanges", json={
+        "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
+        "businessTitle": "Pending Title"})
+    text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
+    assert "is waiting for approval in Workday" in text and "Data Change" in text
+
+
+def test_explain_gap_never_synced_sentence(env):
+    wid = "W-1002"
+    for t in ("audit", "review_queue", "id_map"):
+        env["db"].execute(f"DELETE FROM {t} WHERE worker_id=?", (wid,))
+    text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
+    assert text == "No sync has processed this worker yet; run the sync."

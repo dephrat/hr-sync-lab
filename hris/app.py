@@ -24,7 +24,9 @@ class JobChangeIn(BaseModel):
 
 
 class ApproveIn(BaseModel):
-    completedDate: str | None = None  # test hook: pin the completion timestamp
+    # Test-only hook: pins the completion timestamp so tests control the watermark.
+    # Real approvals omit it and get the server clock.
+    completedDate: str | None = None
 
 
 class HireIn(BaseModel):
@@ -186,6 +188,15 @@ def create_app(db_path) -> FastAPI:
         r = find_change(conn, change_id)
         if r["status"] != "pending":
             raise HTTPException(409, "job change is already completed")
+        w = conn.execute("SELECT * FROM workers WHERE id=?", (r["worker_id"],)).fetchone()
+        if w["terminated"]:
+            raise HTTPException(422, "worker has left the company; no further job changes")
+        if r["reason"] != "Termination" and not any([
+                r["job_profile"] and r["job_profile"] != w["job_profile"],
+                r["location"] and r["location"] != w["location"],
+                r["business_title"] and r["business_title"] != w["business_title"],
+                r["department"] and r["department"] != w["department"]]):
+            raise HTTPException(422, "change no longer changes anything")
         approve_change(conn, r["seq"], (body and body.completedDate) or utc_now())
         r = find_change(conn, change_id)
         return job_change_json(r, r["worker_name"])

@@ -57,20 +57,33 @@ def connect(path) -> sqlite3.Connection:
     """Open (and create, if needed) the HRIS database."""
     conn = sqlite3.connect(Path(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.isolation_level = None  # explicit transactions below
     cols = [r[1] for r in conn.execute("PRAGMA table_info(job_changes)")]
-    if cols and "status" not in cols:
+    old_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE name='job_changes_old'").fetchone() is not None
+    if (cols and "status" not in cols) or old_exists:
         # Older databases: completed_date was NOT NULL and there was no status column.
-        conn.executescript(
-            "ALTER TABLE job_changes RENAME TO job_changes_old;"
-            "DROP INDEX IF EXISTS idx_job_changes_completed;")
-        conn.executescript(SCHEMA)
-        conn.execute(
-            "INSERT INTO job_changes (seq, worker_id, effective_date, completed_date, status, reason,"
-            " job_profile, location, business_title, department) SELECT seq, worker_id,"
-            " effective_date, completed_date, 'completed', reason, job_profile, location,"
-            " business_title, department FROM job_changes_old")
-        conn.execute("DROP TABLE job_changes_old")
-        conn.commit()
+        # One transaction, so a crash leaves either the old table or the finished copy.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if not old_exists:
+                conn.execute("ALTER TABLE job_changes RENAME TO job_changes_old")
+            conn.execute("DROP INDEX IF EXISTS idx_job_changes_completed")
+            for stmt in SCHEMA.split(";"):
+                if stmt.strip():
+                    conn.execute(stmt)
+            conn.execute("DELETE FROM job_changes")
+            conn.execute(
+                "INSERT INTO job_changes (seq, worker_id, effective_date, completed_date, status,"
+                " reason, job_profile, location, business_title, department) SELECT seq,"
+                " worker_id, effective_date, completed_date, 'completed', reason, job_profile,"
+                " location, business_title, department FROM job_changes_old")
+            conn.execute("DROP TABLE job_changes_old")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    conn.isolation_level = ""
     conn.executescript(SCHEMA)
     return conn
 

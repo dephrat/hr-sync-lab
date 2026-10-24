@@ -17,7 +17,7 @@ ATTR_KEYS = ("isManager", "country", "state", "customCategory", "department")
 @dataclass
 class RunSummary:
     """Counts for one run. Each change lands in exactly one bucket, named by the final
-    outcome process_change returned for it, so skipped + queued + created + terminated +
+    outcome _sync_worker returned for it (via process_change), so skipped + queued + created + terminated +
     patched + ok + failed == changes_seen. A change that created a learner and was then
     queued (for example ENROLLMENT_MISSING) counts as queued, not created. `ok` means the
     learner's attributes were already correct and enrollment verified."""
@@ -173,14 +173,18 @@ def new_run_id(now: datetime) -> str:
 def _reconcile_pass(hris, learning, rules, store_conn, summary: RunSummary, now: datetime,
                     create_missing: bool, skip_workers: frozenset = frozenset()) -> bool:
     """Check every Workday worker (terminated ones too) not in `skip_workers`, keyed by
-    RECON-<worker id>. Counts into `summary`. False when a client error stopped the pass."""
+    RECON-<worker id>. Workers with an open review item are skipped too. Counts into `summary`.
+    A failed worker stops the rest of the pass; the next run resumes from the top. False when a client error stopped the pass."""
     try:
         workers = hris.list_workers()
     except (HrSyncClientError, httpx.HTTPError):
         summary.failed += 1
         return False
+    # A person with an open review item is left alone until a reviewer closes it.
+    open_workers = {r[0] for r in store_conn.execute(
+        "SELECT worker_id FROM review_queue WHERE status='open'")}
     for w in workers:
-        if w["id"] in skip_workers:
+        if w["id"] in skip_workers or w["id"] in open_workers:
             continue
         summary.changes_seen += 1
         terminated = bool(w.get("workerStatus", {}).get("terminated"))
@@ -210,6 +214,7 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         summary.failed = 1
         store.record_run(store_conn, summary.to_dict(), started_at)
         return summary
+    touched: set[str] = set()
     for change in changes:
         summary.changes_seen += 1
         outcome = process_change(hris, learning, rules, store_conn, change, summary.run_id,
@@ -219,12 +224,14 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
             store.record_run(store_conn, summary.to_dict(), started_at)
             return summary
         setattr(summary, outcome, getattr(summary, outcome) + 1)
+        if outcome != "skipped":  # a skipped change (inclusive watermark) did not reconcile
+            touched.add(change["worker"]["id"])
     if changes:
         store.set_watermark(store_conn, max(c["completedDate"] for c in changes))
         store_conn.commit()
     if full:
         _reconcile_pass(hris, learning, rules, store_conn, summary, now, create_missing,
-                        frozenset(c["worker"]["id"] for c in changes))
+                        frozenset(touched))
     if changes or full:
         store.record_run(store_conn, summary.to_dict(), started_at)
     return summary

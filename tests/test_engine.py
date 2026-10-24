@@ -359,3 +359,37 @@ def test_pending_change_waits_for_approval(env):
     assert env["hc"].post(f"/jobChanges/{jc['id']}/approve").status_code == 200
     s = run(env)
     assert seen() and s.created == 1
+
+
+def test_watermark_boundary_worker_is_reconciled(env):
+    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=True)
+    changes = env["hris"].job_changes_since("2000-01-01T00:00:00Z")
+    newest = max(changes, key=lambda c: c["completedDate"])
+    wid = newest["worker"]["id"]
+    lid = learner_for(env, wid)
+    env["learning"].patch_learner(lid, {"department": "Bogus"})
+    assert env["learning"].get_learner(lid)["department"] == "Bogus"
+    s = engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=True)
+    assert s.patched >= 1
+    assert env["learning"].get_learner(lid)["department"] != "Bogus"
+    row = env["db"].execute("SELECT outcome FROM audit WHERE change_id=? AND action="
+                            "'patch_learner' AND run_id=?", (RECON := f"RECON-{wid}",
+                                                             s.run_id)).fetchone()
+    assert row == ("ok",)
+
+
+def test_pass_two_does_not_duplicate_queue_items(env):
+    run(env, full=True)
+    def snapshot():
+        return (env["db"].execute("SELECT worker_id, reason FROM review_queue"
+                                  " WHERE status='open'").fetchall(),
+                env["db"].execute("SELECT COUNT(*) FROM audit WHERE change_id LIKE 'RECON-%'"
+                                  " AND worker_id IN (SELECT worker_id FROM review_queue"
+                                  " WHERE status='open')").fetchone()[0])
+    first_items, first_audit = snapshot()
+    pairs = [tuple(p) for p in first_items]
+    assert len(pairs) == len(set(pairs)) and pairs
+    run(env, full=True)
+    items, audit_rows = snapshot()
+    assert sorted(map(tuple, items)) == sorted(pairs)
+    assert audit_rows == first_audit

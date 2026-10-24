@@ -62,9 +62,10 @@ def already_processed(conn, change_id: str) -> bool:
 
 
 def queue_item(conn, change_id, worker_id, reason, detail, at) -> None:
-    """Open a review item unless an identical open one already exists."""
-    if conn.execute("SELECT 1 FROM review_queue WHERE change_id IS ? AND worker_id=? AND reason=?"
-                    " AND status='open'", (change_id, worker_id, reason)).fetchone():
+    """Open a review item unless the worker already has an open one for the same reason
+    (whatever change or reconcile check raised it)."""
+    if conn.execute("SELECT 1 FROM review_queue WHERE worker_id=? AND reason=?"
+                    " AND status='open'", (worker_id, reason)).fetchone():
         return
     conn.execute("INSERT INTO review_queue (change_id, worker_id, reason, detail, status,"
                  " created_at) VALUES (?,?,?,?,'open',?)",

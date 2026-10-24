@@ -56,6 +56,10 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
         " ORDER BY id DESC LIMIT 1", (worker_id,)).fetchone()
     if item:
         change_id, reason, detail = item
+        if change_id.startswith(engine.RECON_PREFIX):
+            name = hris.get_worker(worker_id)["descriptor"]
+            return (f"A reconcile check queued {name} ({reason}: {detail!r}); no attributes "
+                    f"were written, so Ethena never enrolled this learner in {campaign_name!r}.")
         when = ""
         try:
             when = f" on {hris.get_job_change(change_id)['effectiveDate']}"
@@ -77,8 +81,15 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
         "SELECT action, outcome, created_at FROM audit WHERE worker_id=? ORDER BY id DESC LIMIT 1",
         (worker_id,)).fetchone()
     if last is None:
-        return ("No job change has been processed for this worker; the sync only reacts to "
-                "Workday job changes.")
+        try:
+            pending = hris.pending_changes(worker_id)
+        except (HrSyncClientError, AttributeError):
+            pending = []
+        if pending:
+            p = pending[0]
+            return (f"Change {p['id']} ({p['reason']['descriptor']}) is waiting for approval in "
+                    f"Workday; the sync only sees approved changes.")
+        return "No sync has processed this worker yet; run the sync."
     return (f"Last sync action was {last[0]} {last[1]} at {last[2]}; no queue item or rule "
             f"explains the missing {campaign_name!r} enrollment.")
 

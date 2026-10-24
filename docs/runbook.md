@@ -44,18 +44,18 @@ Every 15 minutes on weekdays, appending the JSON summary to a log:
 */15 * * * 1-5  cd /opt/hr-sync-lab && /usr/local/bin/uv run hrsync run --json >> /var/log/hrsync.log 2>&1
 ```
 
-Alert on a non-zero exit. Running more often is safe: a run with no new changes skips the last change it already handled and does nothing else.
+Alert on a non-zero exit. If a worker fails (Ethena or Workday error), the rest of the full pass stops and the next run resumes from the top. Running more often is safe: a run with no new changes skips the last change it already handled and does nothing else.
 
 ## Review queue: reason codes and what HR Ops does
 
-Each open item names a worker, a job change and a reason. A queued change is not retried by later runs; it waits for a person.
+Each open item names a worker, a job change and a reason. A queued person is left alone by later runs until the item is closed.
 
 | Reason | What happened | What HR Ops does |
 |---|---|---|
 | `UNKNOWN_LOCATION` | The worker's Workday location is not in the rules table, so the sync does not know which country or province rules apply. Nothing was written to Ethena. | Ask the automation builder to add the location (see below). Then `hrsync resolve <id> --map-learner <learner id>` reruns the change with the new rule (how to find the learner id is below the table). If the location should never get training, `--skip` with a note. |
 | `UNKNOWN_PROFILE` | Same, for the job profile. | Same as above, adding the profile. |
 | `AMBIGUOUS_LEARNER` | Two or more Ethena learners share the worker's email (the detail lists their ids). | Decide which learner is the real person, then `hrsync resolve <id> --map-learner <that id>`. Ask Enablement to deactivate the duplicate in Ethena. |
-| `NO_LEARNER_MATCH` | No Ethena learner has the worker's email, and the sync was told not to create one (`--no-create`), or the change is a termination for someone never in Ethena. | If the person exists in Ethena under another email, map them with `--map-learner`. If it is a termination with no learner, `--skip`. Otherwise ask Enablement to create the learner, then map them with `--map-learner`. A later run without `--no-create` does not pick the change up again, because it is already queued. |
+| `NO_LEARNER_MATCH` | No Ethena learner has the worker's email, and the sync was told not to create one (`--no-create`), or the change is a termination for someone never in Ethena. | If the person exists in Ethena under another email, map them with `--map-learner`. If it is a termination with no learner, `--skip`. Otherwise ask Enablement to create the learner, then map them with `--map-learner`. A later run without `--no-create` leaves the person alone while the item is open. |
 | `ENROLLMENT_MISSING` | Attributes were written, but Ethena did not enroll the person in every campaign the rules expect (the detail names them). Usually a campaign is inactive or its audience in Ethena differs from the rules table. | Send the detail to Enablement to check the campaign's status and audience. Once fixed, `--map-learner` with the same learner id to recheck. |
 
 `--map-learner` saves the worker-to-learner mapping, closes the item as resolved and reprocesses that one job change. `--skip` closes it without touching Ethena. Both record the note in the `resolution` column. If the reprocessed change ends up `queued` or `failed` (for example a new `UNKNOWN_LOCATION`), `resolve` keeps the mapping, prints `item N resolved (mapping saved) but change X is now: queued (...)` and exits 1, so check `hrsync queue` for the new item.
