@@ -120,14 +120,27 @@ def create_app(db_path) -> FastAPI:
         """Mock simplification of Workday's initiate/submit/approve flow: the change is
         applied to the worker immediately and completedDate is set to now (or the
         optional completedDate supplied by the caller)."""
-        if conn.execute("SELECT 1 FROM workers WHERE id=?", (body.workerId,)).fetchone() is None:
+        cur_w = conn.execute("SELECT * FROM workers WHERE id=?", (body.workerId,)).fetchone()
+        if cur_w is None:
             raise HTTPException(404, "worker not found")
+        if cur_w["terminated"]:
+            raise HTTPException(422, "worker has left the company; no further job changes")
         if body.jobProfile is not None and body.jobProfile not in JOB_PROFILES:
             raise HTTPException(422, f"unknown jobProfile {body.jobProfile}")
         if body.location is not None and body.location not in LOCATIONS:
             raise HTTPException(422, f"unknown location {body.location}")
         if body.supervisoryOrganization is not None and body.supervisoryOrganization not in DEPARTMENTS:
             raise HTTPException(422, f"unknown supervisoryOrganization {body.supervisoryOrganization}")
+        if body.reason != "Termination":
+            changes = [
+                body.jobProfile is not None and body.jobProfile != cur_w["job_profile"],
+                body.location is not None and body.location != cur_w["location"],
+                body.businessTitle is not None and body.businessTitle != cur_w["business_title"],
+                body.supervisoryOrganization is not None
+                and body.supervisoryOrganization != cur_w["department"]]
+            if not any(changes):
+                raise HTTPException(422, "a job change must change the job profile, location, "
+                                         "title or organization, unless the reason is Termination")
         seq = apply_job_change(
             conn, worker_id=body.workerId, effective_date=body.effectiveDate,
             reason=body.reason, completed_date=body.completedDate or utc_now(),

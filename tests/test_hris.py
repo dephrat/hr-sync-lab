@@ -80,3 +80,23 @@ def test_seed_is_deterministic(tmp_path):
         seed(conn)
         return [r["descriptor"] for r in conn.execute("SELECT descriptor FROM workers ORDER BY id")]
     assert names("a.db") == names("b.db")
+
+
+def test_terminated_worker_rejects_change(client):
+    assert client.post("/jobChanges", json={
+        "workerId": "W-1001", "effectiveDate": "2026-10-01", "reason": "Termination"}).status_code == 201
+    r = client.post("/jobChanges", json={
+        "workerId": "W-1001", "effectiveDate": "2026-10-02", "reason": "Transfer",
+        "location": "Toronto, ON"})
+    assert r.status_code == 422 and "left the company" in r.json()["detail"]
+
+
+def test_noop_change_rejected_unless_termination(client):
+    w = client.get("/workers/W-1002").json()
+    for body in ({}, {"jobProfile": w["jobProfile"]["id"], "location": w["location"]["descriptor"],
+                      "businessTitle": w["businessTitle"]}):
+        r = client.post("/jobChanges", json={"workerId": "W-1002", "effectiveDate": "2026-10-01",
+                                             "reason": "Data_Change", **body})
+        assert r.status_code == 422 and "must change" in r.json()["detail"]
+    assert client.post("/jobChanges", json={"workerId": "W-1002", "effectiveDate": "2026-10-01",
+                                            "reason": "Termination"}).status_code == 201

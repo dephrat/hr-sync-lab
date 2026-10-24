@@ -113,7 +113,7 @@ def test_explain_absent_worker_no_change(client):
     assert r.status_code == 200 and "No job change" in r.json()["sentence"]
     assert client.post("/api/explain", json={"worker_id": "W-1008"}).status_code == 422
     assert client.post("/api/explain", json={"worker_id": "W-9999",
-                                             "campaign_name": "x"}).status_code == 404
+                                             "campaign_name": "Manager Fundamentals"}).status_code == 404
 
 
 def test_noop_job_change_then_run_ok(client):
@@ -122,11 +122,16 @@ def test_noop_job_change_then_run_ok(client):
     w = client.get(f"/workday/workers/{wid}").json()
     r = client.post("/workday/jobChanges", json={
         "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
-        "jobProfile": w["jobProfile"]["id"], "location": w["location"]["descriptor"]})
+        "businessTitle": "Senior " + w["businessTitle"]})
     assert r.status_code == 201
     body = client.post("/api/run").json()
     mine = [c for c in body["changes"] if c["change_id"] == r.json()["id"]]
     assert mine and mine[0]["outcome"] == "ok" and body["summary"]["failed"] == 0
+
+
+def test_explain_unknown_campaign_is_422(client):
+    r = client.post("/api/explain", json={"worker_id": "W-1001", "campaign_name": "nope"})
+    assert r.status_code == 422 and r.json() == {"error": "unknown campaign"}
 
 
 def test_concurrent_runs_process_each_change_once(client):

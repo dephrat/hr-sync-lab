@@ -31,6 +31,10 @@ async function api(url, opts = {}) {
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
   if (!r.ok) {
     let msg = (data && (data.error || data.detail)) || r.statusText || "Request failed";
+    if (Array.isArray(msg) && msg.length) {
+      const f = msg[0] || {}, field = Array.isArray(f.loc) ? f.loc.filter((x) => x !== "body" && x !== "query" && x !== "path").join(".") : "";
+      msg = (field ? field + ": " : "") + (f.msg || JSON.stringify(f));
+    }
     if (typeof msg !== "string") msg = JSON.stringify(msg);
     throw new Error(msg);
   }
@@ -49,8 +53,8 @@ const fail = (e) => toast(e.message || String(e), "error");
 const guard = (fn) => (...a) => { try { return Promise.resolve(fn(...a)).catch(fail); } catch (e) { fail(e); } };
 
 // rows: array of objects; cols: [[header, fn(row) -> html]]
-function table(rows, cols, onClick) {
-  if (!rows || !rows.length) return '<p class="muted">none</p>';
+function table(rows, cols, onClick, empty = "none") {
+  if (!rows || !rows.length) return `<p class="muted">${esc(empty)}</p>`;
   // Workday convention: the person's name is the link that opens the record. No row click,
   // no per-row button. The "Name" column becomes an anchor when a click handler is given.
   const head = "<tr>" + cols.map((c) => `<th>${esc(c[0])}</th>`).join("") + "</tr>";
@@ -73,6 +77,7 @@ function bindRows(container, rows, onClick) {
 function kv(pairs) {
   return '<dl class="kv">' + pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
 }
+const cur = { worker: null, learner: null, person: null };
 const HINT = '<p class="muted">Press Run sync.</p>';
 // Per-search request counter: a response that is not the newest request is dropped.
 const seq = { wd: 0, sy: 0 };
@@ -97,10 +102,11 @@ async function loadWorkers() {
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? "Terminated" : "Active")],
-  ], true) + (rows && rows.length === 25 ? '<p class="muted">Showing the first 25. Search to narrow.</p>' : "");
+  ], true, `No workers match "${q}"`) + (rows && rows.length === 25 ? '<p class="muted">Showing the first 25. Search to narrow.</p>' : "");
   bindRows(box, rows, showWorker);
 }
 async function showWorker(w) {
+  cur.worker = w;
   const d = await api("api/workers/" + encodeURIComponent(w.id));
   const wk = d.worker || {};
   $("wd-detail").innerHTML = `<div class="card"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><h4>${esc(wk.descriptor)} (${esc(wk.id)})</h4>` + kv([
@@ -108,15 +114,17 @@ async function showWorker(w) {
     ["Location", get(wk, "location.descriptor")], ["Department", get(wk, "primarySupervisoryOrganization.descriptor")],
     ["Manager", yesno(wk.isManager)], ["Hired", wk.hireDate],
     ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"],
-  ]) + `<form class="jc row" id="jc-form"><strong>Job change:</strong>
+  ]) + (get(wk, "workerStatus.terminated") ? "<p>This person has left the company.</p></div>" : `<form class="jc row" id="jc-form"><strong>Job change:</strong>
       <select name="reason">${options(REASONS, (r) => r.replace("_", " "))}</select>
       <select name="jobProfile"><option value="">new job profile</option>${options(PROFILES, (p) => p.replace(/_/g, " "))}</select>
       <select name="location"><option value="">new location</option>${options(LOCATIONS)}</select>
       <button class="primary" disabled>Record change</button>
-      <span class="muted" id="jc-hint">Pick a new job profile or location. A promotion or transfer has to change something.</span></form></div>`;
+      <span class="muted" id="jc-hint">Pick a new job profile or location. A promotion or transfer has to change something.</span></form></div>`);
   // Like Workday: the reason is only a label. The change must actually change the profile or
   // the location, except a termination, which needs neither.
-  const form = $("jc-form"), curProfile = get(wk, "jobProfile.id"), curLocation = get(wk, "location.descriptor");
+  const form = $("jc-form");
+  if (!form) return;
+  const curProfile = get(wk, "jobProfile.id"), curLocation = get(wk, "location.descriptor");
   const check = () => {
     const term = form.reason.value === "Termination";
     const changed = (form.jobProfile.value && form.jobProfile.value !== curProfile) ||
@@ -183,10 +191,11 @@ function filterLearners() {
     ["Id", (l) => esc(l.id)], ["Name", (l) => esc(l.name)], ["Email", (l) => esc(l.email)],
     ["Status", (l) => esc(l.status)], ["Country", (l) => esc(l.country)], ["State", (l) => esc(l.state)],
     ["Manager", (l) => yesno(l.isManager)], ["Category", (l) => esc(l.customCategory)],
-  ], true);
+  ], true, `No learners match "${q}"`);
   bindRows(box, rows, showLearner);
 }
 async function showLearner(l) {
+  cur.learner = l;
   const [e, cs] = await Promise.all([
     api("ethena/v1/learner-training-campaigns?limit=100&learnerId=" + encodeURIComponent(l.id)), campaigns()]);
   const names = Object.fromEntries(cs.map((c) => [c.id, c.campaignName]));
@@ -248,6 +257,7 @@ async function runSync() {
       a.remove();
     }));
     await Promise.all([loadState(), loadQueue()]);
+    await refreshCards();
   } finally { btn.disabled = false; btn.textContent = "Run sync"; }
 }
 function ageOf(ts) {
@@ -262,8 +272,10 @@ function detailOf(q) {
   if (q.reason.startsWith("UNKNOWN_")) { const m = d.match(/'([^']*)'/); return m ? `"${m[1]}"` : d; }
   return d;
 }
+let itemsCache = [];
 async function loadQueue() {
   const items = await api("api/queue?all=" + ($("sy-all").checked ? 1 : 0));
+  itemsCache = items;
   const box = $("sy-queue");
   box.innerHTML = table(items, [
     ["Why", (q) => `${esc(q.reason_label)}<div class="help">${esc(q.reason)}</div>`],
@@ -275,13 +287,14 @@ async function loadQueue() {
 }
 function queueActions(q) {
   if (q.status !== "open") return `${q.status === "resolved" ? "Resolved" : "Skipped"}${q.resolution ? `<div class="help">${esc(q.resolution)}</div>` : ""}`;
-  const skip = `<input data-note="${esc(q.id)}" placeholder="note (optional)"> <button data-act="skip" data-id="${esc(q.id)}">Skip</button>`;
-  if (q.needs_rule) return '<div class="help">Add this location or job profile to the rules table (automation builder). Skip if no training applies.</div>' + skip;
+  const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional, saved with Resolve or Skip)" size="32"></div>`;
+  const skip = `<button data-act="skip" data-id="${esc(q.id)}">Skip</button>`;
+  if (q.needs_rule) return '<div class="help">Add this location or job profile to the rules table (automation builder). Skip if no training applies.</div>' + note + `<div class="row" style="margin-top:4px">${skip}</div>`;
   const cands = q.candidates || [];
   const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick a learner</option>${cands.map((c) =>
     `<option value="${esc(c.id)}">${esc([c.id, c.name, c.email].filter(Boolean).join(" · "))}</option>`).join("")}</select> ` : "";
-  return `<div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type a learner id" size="16">
-    <button class="primary" data-act="resolve" data-id="${esc(q.id)}">Resolve</button></div><div class="row" style="margin-top:4px">${skip}</div>`;
+  return `<div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type a learner id, e.g. L100039" size="24">
+    </div>${note}<div class="row" style="margin-top:4px"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Resolve</button> ${skip}</div>`;
 }
 async function queueAct(b) {
   const id = b.dataset.id, box = $("sy-queue");
@@ -293,14 +306,18 @@ async function queueAct(b) {
       toast(`Queue item ${id} skipped.`);
     } else {
       const sel = box.querySelector(`[data-sel="${id}"]`), free = box.querySelector(`[data-free="${id}"]`);
-      const learner = (sel && sel.value) || (free && free.value.trim()) || "";
+      const typed = free ? free.value.trim() : "";
+      if (typed && sel) sel.value = "";  // a typed id is the more deliberate action and wins
+      const learner = typed || (sel && sel.value) || "";
       if (!learner) { toast("Pick a learner or type a learner id first.", "error"); return; }
       const r = await api(`api/queue/${id}/resolve`, { method: "POST", body: { learner_id: learner, note } });
-      toast(r.outcome === "queued"
-        ? `Re-ran ${r.change_id}: queued again for another reason, see the queue.`
-        : `Re-ran ${r.change_id}: ${r.outcome}`);
+      const OUT = { patched: "Ethena updated", ok: "nothing to change", created: "added to Ethena",
+        queued: "queued again for another reason, see the queue", failed: "the rerun failed, see the audit trail" };
+      const item = (itemsCache.find((x) => String(x.id) === String(id)) || {});
+      toast(`Mapped ${item.worker_name || "the person"} (${item.worker_id || "?"}) to ${r.learner_id}; ${OUT[r.outcome] || r.outcome}. Item closed.`);
     }
     await Promise.all([loadQueue(), loadState()]);
+    await refreshCards();
   } finally { b.disabled = false; }
 }
 async function searchPeople() {
@@ -309,10 +326,12 @@ async function searchPeople() {
   const rows = await api("api/workers?q=" + encodeURIComponent(q));
   if (n !== seq.sy) return;
   box.innerHTML = table(rows, [["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
-    ["Email", (w) => esc(w.primaryWorkEmail)], ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)]], true);
+    ["Email", (w) => esc(w.primaryWorkEmail)], ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)]], true,
+    `No workers match "${q}"`);
   bindRows(box, rows, showPerson);
 }
 async function showPerson(w) {
+  cur.person = w;
   const d = await api("api/workers/" + encodeURIComponent(w.id));
   const wk = d.worker || {}, l = d.learner;
   $("ex-worker").value = wk.id || w.id;
@@ -321,7 +340,7 @@ async function showPerson(w) {
   else if (!l) lcard = "<p>No learner mapped yet</p>";
   else lcard = kv([["Learner id", l.id], ["Status", l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Category", l.customCategory]]);
-  $("sy-person").innerHTML = `<div class="cards">
+  $("sy-detail").innerHTML = `<div class="cards">
     <button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>Workday</h4>${kv([["Name", wk.descriptor], ["Id", wk.id], ["Email", wk.primaryWorkEmail],
       ["Job profile", get(wk, "jobProfile.descriptor")], ["Location", get(wk, "location.descriptor")],
       ["Manager", yesno(wk.isManager)], ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"]])}</div>
@@ -340,8 +359,12 @@ async function loadExplainCampaigns() {
 }
 async function explain(ev) {
   ev.preventDefault();
-  const r = await api("api/explain", { method: "POST",
-    body: { worker_id: $("ex-worker").value.trim(), campaign_name: $("ex-campaign").value } });
+  $("ex-out").innerHTML = '<p class="muted">Working...</p>';
+  let r;
+  try {
+    r = await api("api/explain", { method: "POST",
+      body: { worker_id: $("ex-worker").value.trim(), campaign_name: $("ex-campaign").value } });
+  } catch (e) { $("ex-out").innerHTML = ""; throw e; }
   $("ex-out").innerHTML = `<blockquote>${esc(r.sentence)}</blockquote>`;
 }
 
@@ -370,11 +393,12 @@ async function reset() {
   if (!confirm("Reset the demo? All three databases are reseeded.")) return;
   const r = await api("api/reset", { method: "POST" });
   campaignCache = null;
-  ["wd-detail", "et-detail", "sy-person", "sy-results", "ex-out"].forEach((id) => { $(id).innerHTML = ""; });
+  ["wd-detail", "et-detail", "sy-detail", "sy-results", "ex-out"].forEach((id) => { $(id).innerHTML = ""; });
   $("sy-result").innerHTML = HINT;
   ["wd-q", "et-q", "sy-q"].forEach((id) => { $(id).value = ""; });
   $("sy-all").checked = false;
   seq.wd++; seq.sy++;
+  cur.worker = cur.learner = cur.person = null;
   toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
   route();
 }
@@ -390,11 +414,19 @@ $("sy-explain").addEventListener("submit", guard(explain));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 route();
 
+async function refreshCards() {
+  if (cur.learner) await showLearner(cur.learner);
+  if (cur.person) await showPerson(cur.person);
+  if (cur.worker) await showWorker(cur.worker);
+}
 // One handler for every detail pane's close button: empty the pane and drop the row highlight.
 document.addEventListener("click", (ev) => {
   const btn = ev.target.closest("button.closecard");
   if (!btn) return;
   const pane = btn.closest('[id$="-detail"]');
-  if (pane) pane.innerHTML = "";
+  if (pane) { pane.innerHTML = "";
+    if (pane.id === "wd-detail") cur.worker = null;
+    if (pane.id === "et-detail") cur.learner = null;
+    if (pane.id === "sy-detail") cur.person = null; }
   document.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel"));
 });

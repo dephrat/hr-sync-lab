@@ -37,7 +37,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   <section id="tab-ethena" class="panel" data-accent="ethena">
     <h2>Ethena (mock learning platform)</h2>
     <p class="muted">What the training system believes right now. Read-only.</p>
-    <input id="et-q" class="search" placeholder="Filter by name, id, email, country, department or category">
+    <input id="et-q" class="search" placeholder="Filter by name, id, email, status, country, department or category">
     <div id="et-detail"></div>
     <div id="et-table"></div>
     <h3>Campaigns</h3>
@@ -52,17 +52,19 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <h3>Review queue</h3>
     <p class="muted">The sync stopped on these and left them for a person.
       <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>
+    <p class="muted">Resolve maps the person to the Ethena learner you pick, then re-runs their change. Skip closes the item without touching Ethena.</p>
     <div id="sy-queue"></div>
     <h3>Look up a person</h3>
     <input id="sy-q" class="search" placeholder="Search workers by name, id, email, job profile or location">
     <div id="sy-results"></div>
-    <div id="sy-person"></div>
+    <div id="sy-detail"></div>
     <h3>Why isn't this person in a campaign?</h3>
     <form id="sy-explain" class="row">
       <input id="ex-worker" placeholder="Worker id, e.g. W-1001" required>
       <select id="ex-campaign"></select>
       <button class="primary">Explain</button>
     </form>
+    <p class="muted">Clicking a person in the lookup fills the worker id.</p>
     <div id="ex-out"></div>
   </section>
   <section id="tab-report" class="panel" data-accent="report">

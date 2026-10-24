@@ -235,6 +235,10 @@ def resolve(item_id: int, body: ResolveIn, request: Request):
                                                body.learner_id, datetime.now(UTC), body.note)
         except ValueError as exc:
             return _err(404, str(exc))
+        except ClientError as exc:
+            if exc.status == 404:
+                return _err(404, f"learner {body.learner_id} not found in Ethena")
+            return _err(502, str(exc))
         except (HrSyncClientError, httpx.HTTPError) as exc:
             return _err(502, str(exc))
 
@@ -320,6 +324,8 @@ def campaigns(request: Request):
 @router.post("/explain")
 def explain(body: ExplainIn, request: Request):
     b = _bundle(request)
+    if body.campaign_name not in {c["campaignName"] for c in b.learning.list_campaigns()}:
+        return _err(422, "unknown campaign")
     with _Store(request) as conn:
         try:
             b.hris.get_worker(body.worker_id)  # explain_gap alone would not notice a bad id
