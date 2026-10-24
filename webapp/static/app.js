@@ -353,7 +353,7 @@ function filterLearners() {
   const box = $("et-table");
   box.innerHTML = '<div class="ethena-tbl">' + table(rows, [
     ["Learner", (l) => `${esc(l.name)}<div class="help">${esc(l.id)}</div>`],
-    ["Status", (l) => `<span class="spill ${l.status === "ACTIVE" ? "act" : "term"}">${esc(l.status)}</span>`],
+    ["Status", (l) => `<span class="spill ${l.status === "ACTIVE" ? "act" : "term"}" title="${esc(l.status)}">${l.status === "ACTIVE" ? "Active" : l.status === "TERMINATED" ? "Left" : esc(l.status)}</span>`],
     ["Training", pills],
     ["Attributes", (l) => `<span class="muted">${esc(attrString(l))}</span>`],
   ].map((c) => c[0] === "Learner" ? ["Name", c[1]] : c), true, `No learners match "${q}"`) + "</div>";
@@ -394,12 +394,12 @@ async function showLearner(l) {
   cur.learner = l;
   await campaigns();  // maps each enrollment's campaign to its course for the course player
   $("et-detail").innerHTML = `<div class="cards"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>${esc(l.name)} (${esc(l.id)})</h4>` + kv([
-    ["Email", l.email], ["Status", l.status], ["Country", l.country], ["State", l.state],
+    ["Email", l.email], ["Status", l.status === "ACTIVE" ? "Active" : l.status === "TERMINATED" ? "Left the company" : l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Reports to", l.managerLearnerId], ["Department", l.department],
     ["Category", l.customCategory], ["Worker type", l.workerType],
   ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
     ["Campaign", (x) => esc(x.campaignName)],
-    ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
+    ["Status", statusOf], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
     ["", (x) => isDone(x) ? "" : isRemoved(x) ? '<span class="muted">removed</span>' : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
       `<button type="button" class="mark" data-ltc="${esc(x.id)}">Take course</button>`],
   ]) + '<div id="et-course"></div></div></div>';
@@ -661,7 +661,7 @@ async function showPerson(w) {
   let lcard;
   if ((d.candidates || []).length > 1) lcard = `<p>Two learners match this email: ${esc(d.candidates.map((c) => c.id).join(", "))}</p>`;
   else if (!l) lcard = "<p>No learner mapped yet</p>";
-  else lcard = kv([["Learner id", l.id], ["Status", l.status], ["Country", l.country], ["State", l.state],
+  else lcard = kv([["Learner id", l.id], ["Status", l.status === "ACTIVE" ? "Active" : l.status === "TERMINATED" ? "Left the company" : l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Category", l.customCategory]]);
   $("sy-detail").innerHTML = `<div class="cards">
     <button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>Workday</h4>${kv([["Name", wk.descriptor], ["Id", wk.id], ["Email", wk.primaryWorkEmail],
@@ -669,24 +669,32 @@ async function showPerson(w) {
       ["Manager", yesno(wk.isManager)], ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"]])}</div>
     <div class="card"><h4>Ethena learner</h4>${lcard}</div>
     <div class="card"><h4>Enrollments</h4>${(d.enrollments || []).length ? table(d.enrollments, [
-      ["Campaign", (x) => esc(x.campaignName)], ["Status", (x) => esc(x.completionStatus)],
+      ["Campaign", (x) => esc(x.campaignName)], ["Status", statusOf],
       ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
     <div class="sy-sub"><h4>Sync activity, newest first</h4>
     <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show all</label></p>
-    <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), [
-      ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
-      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") + "</div></div>" +
+    <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), AUDIT_COLS) : "<p>No sync activity for this worker yet</p>") + "</div></div>" +
     `<div class="why"><h4>Why isn't ${esc(wk.descriptor || w.id)} in a course?</h4>
     <form id="ex-form" class="row"><select id="ex-campaign">${options((await campaigns()).map((c) => c.campaignName))}</select>
     <button class="primary">Explain</button></form><div id="ex-out"></div></div>`;
   $("ex-form").addEventListener("submit", guard((ev) => explain(ev, wk.id || w.id)));
   $("sy-allaudit").addEventListener("change", () => {
     const rows = $("sy-allaudit").checked ? d.audit : d.audit.filter((a) => a.outcome !== "skipped");
-    $("sy-audit").innerHTML = rows.length ? table(rows, [
-      ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
-      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>";
+    $("sy-audit").innerHTML = rows.length ? table(rows, AUDIT_COLS) : "<p>No sync activity for this worker yet</p>";
   });
 }
+// Plain words on screen; the system's own code stays in the tooltip for anyone who needs it.
+const STATUS_WORDS = { WITHIN_DEADLINE: "in progress", COMPLETED: "completed", INCOMPLETE: "in progress",
+  PAST_DEADLINE: "overdue", REMOVED: "removed" };
+const ACTION_WORDS = { load_worker: "Read the Workday record", map_learner: "Matched the Ethena account",
+  create_learner: "Created the Ethena account", patch_learner: "Updated Ethena",
+  terminate_learner: "Marked as left the company", verify_enrollment: "Checked their courses",
+  queue: "Sent to manual review", skip: "Already handled" };
+const OUTCOME_WORDS = { ok: "done", skipped: "nothing to change", queued: "waiting for a person", failed: "failed" };
+const coded = (words, code) => `<span title="${esc(code || "")}">${esc(words[code] || code || "")}</span>`;
+const statusOf = (x) => coded(STATUS_WORDS, isLate(x) && !isDone(x) ? "PAST_DEADLINE" : x.completionStatus);
+const AUDIT_COLS = [["Time", (a) => esc(when(a.created_at))], ["What the sync did", (a) => coded(ACTION_WORDS, a.action)],
+  ["Result", (a) => coded(OUTCOME_WORDS, a.outcome)], ["Detail", (a) => esc(a.detail)]];
 async function explain(ev, workerId) {
   ev.preventDefault();
   $("ex-out").innerHTML = '<p class="muted">Working...</p>';
