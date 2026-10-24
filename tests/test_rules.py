@@ -29,18 +29,3 @@ def test_unknown_location_or_profile(r):
 def test_warehouse_keeps_location_province_and_gets_department(r):
     a = r.attributes_for("Warehouse_Associate", "Toronto, ON", "Operations")
     assert a["customCategory"] == "ON" and a["department"] == "Operations" and a["isManager"] is False
-    assert r.expected_campaigns(a) == {"Harassment Prevention (Ontario)", "Data Privacy Essentials",
-                                       "Workplace Safety (Warehouse)"}
-
-
-def test_expected_campaigns(r):
-    a = r.attributes_for("Sales_Team_Lead", "Toronto, ON", "Sales")
-    assert r.expected_campaigns(a) == {
-        "Harassment Prevention (Ontario)", "Manager Fundamentals", "Data Privacy Essentials"}
-    us = r.attributes_for("Warehouse_Supervisor", "Austin, TX", "Operations")
-    assert r.expected_campaigns(us) == {
-        "Harassment Prevention (US Managers)", "Manager Fundamentals",
-        "Data Privacy Essentials", "Workplace Safety (Warehouse)"}
-    emp = r.attributes_for("Sales_Rep", "New York, NY", "Sales")
-    assert r.expected_campaigns(emp) == {
-        "Harassment Prevention (US Employees)", "Data Privacy Essentials"}

@@ -44,6 +44,10 @@ def map_learner(conn, worker_id: str, learner_id: str, source: str, at: str) -> 
                  (worker_id, learner_id, source, at))
 
 
+def unmap_learner(conn, worker_id: str) -> None:
+    conn.execute("DELETE FROM id_map WHERE worker_id=?", (worker_id,))
+
+
 def audit(conn, run_id, change_id, worker_id, learner_id, action, outcome, detail, at) -> None:
     """Append one audit row. The log is append-only: uniqueness is (run_id, change_id, action),
     so recording the same step twice in a run raises IntegrityError."""

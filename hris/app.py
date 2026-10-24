@@ -1,11 +1,12 @@
 """Mock Workday staffing API (FastAPI)."""
 import re
+import unicodedata
 from datetime import date
 from typing import Literal
 
 from fastapi.responses import JSONResponse
 from fastapi import Depends, FastAPI, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from hris.db import (DEPARTMENTS, JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, apply_job_change,
                      approve_change, create_pending_change,
@@ -20,7 +21,30 @@ class JobChangeIn(BaseModel):
     location: str | None = None
     businessTitle: str | None = None
     supervisoryOrganization: str | None = None
-    completedDate: str | None = None  # test hook: pin the completion timestamp
+    # Test hook, not part of Workday's API: a body with completedDate skips approval and
+    # completes the change at that timestamp, so tests control the watermark.
+    completedDate: str | None = None
+
+    @field_validator("effectiveDate")
+    @classmethod
+    def _date(cls, v: str) -> str:
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+                raise ValueError
+            date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("effectiveDate must be a date as YYYY-MM-DD") from None
+        return v
+
+    @field_validator("businessTitle")
+    @classmethod
+    def _title(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = " ".join(v.split())
+        if not 2 <= len(v) <= 80:
+            raise ValueError("businessTitle must be 2 to 80 characters")
+        return v
 
 
 class ApproveIn(BaseModel):
@@ -39,6 +63,16 @@ class HireIn(BaseModel):
 def _reason_label(reason_id: str) -> str:
     """Display name for a reason id; Data_Change reads as Correction, which is what it is."""
     return "Correction" if reason_id == "Data_Change" else reason_id.replace("_", " ")
+
+
+def _email_local(name: str) -> str:
+    """first.last in plain ASCII: accents are transliterated (Zoe from Zo\u00eb); a name with no
+    Latin letters at all gets "employee". The worker's name itself stays as typed."""
+    ascii_ = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    words = [w for w in (re.sub(r"[^a-z]", "", x.lower()) for x in ascii_.split()) if w]
+    if not words:
+        return "employee"
+    return words[0] if len(words) == 1 else f"{words[0]}.{words[-1]}"
 
 
 def _ref(id_, descriptor):
@@ -126,11 +160,7 @@ def create_app(db_path) -> FastAPI:
         top = conn.execute("SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) FROM workers").fetchone()[0]
         num = (top or 1000) + 1
         wid = f"W-{num:04d}"
-        words = [re.sub(r"[^a-z]", "", w.lower()) for w in name.split()]
-        words = [w for w in words if w]
-        if len(words) < 2:
-            raise HTTPException(422, "name must contain letters in at least two words")
-        email = f"{words[0]}.{words[-1]}.{num}@example.com"
+        email = f"{_email_local(name)}.{num}@example.com"
         today = date.today().isoformat()
         profile = body.jobProfile
         conn.execute(

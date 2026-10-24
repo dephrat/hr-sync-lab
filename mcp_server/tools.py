@@ -45,35 +45,54 @@ def list_queue(store_conn) -> list[dict]:
 
 
 # Plain-language names for review reasons, the same wording the demo page uses.
+# (A legacy ENROLLMENT_MISSING row falls back to the generic wording.)
 REASON_WORDS = {"UNKNOWN_LOCATION": "no courses are specified for their office yet",
                 "UNKNOWN_PROFILE": "no courses are specified for their job yet",
                 "AMBIGUOUS_LEARNER": "two Ethena accounts share their email",
-                "NO_LEARNER_MATCH": "they have no Ethena account",
-                "ENROLLMENT_MISSING": "an expected course did not appear in Ethena"}
+                "NO_LEARNER_MATCH": "they have no Ethena account"}
+
+ATTR_KEYS = ("isManager", "country", "state", "customCategory", "department")
+
+
+def _learner_id(learning, store_conn, worker_id, worker) -> str | None:
+    """The mapped learner, or before any mapping the single learner with the worker's email."""
+    lid = store.mapped_learner(store_conn, worker_id)
+    if lid or not worker:
+        return lid
+    try:
+        found = learning.find_learners_by_email(worker["primaryWorkEmail"])
+    except HrSyncClientError:
+        return None
+    return found[0]["id"] if len(found) == 1 else None
 
 
 def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name: str) -> str:
     """One plain sentence on why a person is or is not in a course, for someone in HR."""
-    lid = store.mapped_learner(store_conn, worker_id)
     try:
         worker = hris.get_worker(worker_id)
     except HrSyncClientError:
         worker = None
+    lid = _learner_id(learning, store_conn, worker_id, worker)
     name = (worker or {}).get("descriptor") or worker_id
     course = campaign_name
+    held = []
+    if lid:
+        try:
+            held = [c for c in learning.campaigns_for_learner(lid)
+                    if c.get("campaignName") == campaign_name]
+        except HrSyncClientError:
+            held = []
     if worker and worker.get("workerStatus", {}).get("terminated"):
+        if any(c.get("completionStatus") == "COMPLETED" for c in held):
+            return (f"{name} has left the company and completed {course} before leaving; "
+                    "the record is kept.")
         return (f"{name} has left the company. Ethena gives no training to people who left, "
                 "and their unfinished courses were removed.")
-    if lid:
-        for c in learning.campaigns_for_learner(lid):
-            if c.get("campaignName") == campaign_name:
-                status = c.get("completionStatus")
-                if status == "REMOVED":
-                    continue
-                if status == "COMPLETED":
-                    return f"{name} is enrolled in {course} and has completed it."
-                due = str(c.get("deadline") or "")[:10]
-                return f"{name} is enrolled in {course}" + (f", due {due}." if due else ".")
+    for c in held:  # campaigns_for_learner already leaves out REMOVED enrollments
+        if c.get("completionStatus") == "COMPLETED":
+            return f"{name} is enrolled in {course} and has completed it."
+        due = str(c.get("deadline") or "")[:10]
+        return f"{name} is enrolled in {course}" + (f", due {due}." if due else ".")
     item = store_conn.execute(
         "SELECT change_id, reason, detail FROM review_queue WHERE worker_id=? AND status='open'"
         " ORDER BY id DESC LIMIT 1", (worker_id,)).fetchone()
@@ -82,28 +101,38 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
         why = REASON_WORDS.get(reason, "the sync could not decide on its own")
         return (f"{name} is waiting for manual review because {why}. Until someone deals with "
                 f"it, Ethena has not been updated, so {name} is not in {course} yet.")
-    ok = store_conn.execute(
-        "SELECT 1 FROM audit WHERE worker_id=? AND action='verify_enrollment' AND outcome='ok'"
-        " ORDER BY id DESC LIMIT 1", (worker_id,)).fetchone()
-    if ok and worker:
-        profile, loc = worker["jobProfile"]["id"], worker["location"]["descriptor"]
-        attrs = rules.attributes_for(profile, loc, worker["primarySupervisoryOrganization"]["descriptor"])
-        if attrs is not None and campaign_name not in rules.expected_campaigns(attrs):
-            return (f"{course} does not apply to {name}: it goes to a different group of people "
-                    f"than a {worker['jobProfile']['descriptor']} in {loc}. Who gets each course "
-                    "is set in Ethena.")
+    try:
+        pending = hris.pending_changes(worker_id)
+    except (HrSyncClientError, AttributeError):
+        pending = []
+    if pending:
+        p = pending[0]
+        return (f"{name}'s {p['reason']['descriptor'].lower()} is waiting for approval in "
+                "Workday. The sync only acts on approved changes.")
+    mark = store.get_watermark(store_conn)
+    if mark:
+        try:
+            newer = [c for c in hris.job_changes_since(mark)
+                     if c["worker"]["id"] == worker_id and c["completedDate"] > mark]
+        except (HrSyncClientError, AttributeError):
+            newer = []
+        if newer:
+            return (f"{name}'s {newer[-1]['reason']['descriptor'].lower()} was approved in "
+                    "Workday after the last sync. Run sync to carry it to Ethena.")
+    if lid and worker:
+        try:
+            learner = learning.get_learner(lid)
+        except HrSyncClientError:
+            learner = None
+        attrs = rules.attributes_for(worker["jobProfile"]["id"], worker["location"]["descriptor"],
+                                     worker["primarySupervisoryOrganization"]["descriptor"])
+        if learner and attrs is not None and all(learner.get(k) == attrs[k] for k in ATTR_KEYS):
+            return (f"{course} is not given to {name} by Ethena with their current details. "
+                    "Who gets each course is set in Ethena under Courses.")
     last = store_conn.execute(
         "SELECT created_at FROM audit WHERE worker_id=? ORDER BY id DESC LIMIT 1",
         (worker_id,)).fetchone()
     if last is None:
-        try:
-            pending = hris.pending_changes(worker_id)
-        except (HrSyncClientError, AttributeError):
-            pending = []
-        if pending:
-            p = pending[0]
-            return (f"{name}'s {p['reason']['descriptor'].lower()} is waiting for approval in "
-                    "Workday. The sync only acts on approved changes.")
         return f"No sync has looked at {name} yet. Press Run sync."
     return (f"The sync last checked {name} at {str(last[0]).replace('T', ' ').replace('Z', ' UTC')} "
             f"and found nothing that explains why {course} is missing. Run sync to check again.")

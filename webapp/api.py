@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 from hrsync import engine, store
 from hrsync import rules as rules_mod
@@ -35,8 +35,8 @@ REASON_HELP: dict[str, str] = {
                          "cannot tell which one is the real person.",
     "NO_LEARNER_MATCH": "No Ethena learner has the worker's email, and the sync was told not to "
                         "create one, or the change is a termination for someone never in Ethena.",
-    "ENROLLMENT_MISSING": "Attributes were written, but Ethena did not enroll the person in "
-                          "every campaign the rules expect.",
+    # ENROLLMENT_MISSING is no longer raised (Ethena decides who gets which course); a
+    # legacy row shows its code, which the .get() fallbacks below allow.
 }
 
 
@@ -45,7 +45,6 @@ REASON_LABEL: dict[str, str] = {
     "UNKNOWN_PROFILE": "Courses not specified for this job",
     "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
     "NO_LEARNER_MATCH": "No Ethena account for this person",
-    "ENROLLMENT_MISSING": "An expected course did not appear",
 }
 
 
@@ -143,7 +142,10 @@ def _outcome(rows: list[dict]) -> str:
 def _sentence(name, wid, reason, outcome, rows) -> str:
     head = f"{name} ({wid}): {reason}."
     by = {r["action"]: r for r in rows}
-    trained = f"Training confirmed: {by.get('verify_enrollment', {}).get('detail', '')}."
+    held = by.get("verify_enrollment", {}).get("detail", "")
+    now_word = "now has" if outcome in ("created", "patched") else "has"
+    trained = (f"Ethena {now_word} them in: {held}." if held
+               else "Ethena has no courses for them.")
     if outcome == "skipped":
         return f"{head} Already handled in an earlier run."
     if outcome == "failed":
@@ -185,7 +187,7 @@ def last_run(request: Request):
     with _Store(request) as conn:
         last = store.last_run(conn)
     if not last:
-        return {"summary": None, "changes": []}
+        return {"summary": None, "changes": [], "notes": []}
     return _narrate(request, last)
 
 
@@ -202,22 +204,27 @@ def _narrate(request: Request, summary: dict) -> dict:
     changes = []
     for change_id, rows in grouped.items():
         wid = rows[0]["worker_id"]
+        outcome = _outcome(rows)
         if change_id.startswith(engine.RECON_PREFIX):
-            reason = "Spot check"
+            reason = "Missing from Ethena" if outcome == "created" else "Spot check"
         else:
             try:
                 reason = b.hris.get_job_change(change_id)["reason"]["descriptor"]
             except (HrSyncClientError, httpx.HTTPError):
                 reason = "Job change"
         name = _name(b, names, wid)
-        outcome = _outcome(rows)
         changes.append({
             "change_id": change_id, "worker_id": wid, "worker_name": name, "reason": reason,
             "outcome": outcome, "group": GROUP[outcome],
             "actions": [{"action": r["action"], "outcome": r["outcome"], "detail": r["detail"]}
                         for r in rows],
             "sentence": _sentence(name, wid, reason, outcome, rows)})
-    return {"summary": summary, "changes": changes}
+    notes = []
+    n = summary.get("auto_resolved") or 0
+    if n:
+        notes.append(f"{n} manual-review item{'s' if n != 1 else ''} cleared automatically "
+                     "because a course rule now covers them.")
+    return {"summary": summary, "changes": changes, "notes": notes}
 
 
 def _candidates(b, item: dict) -> list[dict]:
@@ -472,7 +479,7 @@ def learners(request: Request):
 def drift(request: Request):
     b = _bundle(request)
     rules = b.rules
-    rows, enr = _enrollment_map(b)
+    rows = b.learning.list_learners()
     by_id = {l["id"]: l for l in rows}
     by_email: dict[str, list[dict]] = {}
     for l in rows:
@@ -519,16 +526,10 @@ def drift(request: Request):
             else:
                 diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
                 if diff:
+                    # The difference may come from Workday or from a course-rule edit, so
+                    # the sentence does not say which.
                     kind = "attrs"
-                    sentence = (f"In Workday, {name} {_phrase(json.dumps(diff))}. "
-                                "Ethena has not been told yet.")
-                else:
-                    have = {e["campaignName"] for e in enr.get(learner["id"], [])}
-                    missing = sorted(rules.expected_campaigns(attrs) - have)
-                    if missing:
-                        kind = "courses"
-                        sentence = (f"{name} should have {', '.join(missing)} in "
-                                    "Ethena but does not yet.")
+                    sentence = f"{name} needs updating in Ethena: {_phrase(json.dumps(diff))}."
         if kind is None:
             continue
         items.append({"worker_id": wid, "worker_name": name,
@@ -556,7 +557,7 @@ class OfficeIn(BaseModel):
 
 class JobIn(BaseModel):
     job: str
-    isManager: bool | None = None
+    isManager: StrictBool | None = None
 
 
 def _audiences(b) -> list[tuple[str, list[dict]]]:
@@ -636,7 +637,10 @@ def put_office(body: OfficeIn, request: Request):
     if country is not None and country not in _valid(ch["countries"]):
         return _err(422, f"unknown country {country!r}")
     if country is None:
-        region = None
+        if region is not None:
+            return _err(422, "a province or state needs a country")
+    elif region is None:
+        return _err(422, "pick a province or state")
     elif region is not None and region not in _valid(ch["regions"][country]):
         return _err(422, f"region {region!r} does not belong to country {country}")
     b = _bundle(request)

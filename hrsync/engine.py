@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hrsync import store
-from hrsync.clients import HrisClient, HrSyncClientError, LearningClient
+from hrsync.clients import ClientError, HrisClient, HrSyncClientError, LearningClient
 from hrsync.rules import Rules
 
 RECON_PREFIX = "RECON-"
@@ -19,8 +19,9 @@ class RunSummary:
     """Counts for one run. Each change lands in exactly one bucket, named by the final
     outcome _sync_worker returned for it (via process_change), so skipped + queued + created + terminated +
     patched + ok + failed == changes_seen. A change that created a learner and was then
-    queued (for example ENROLLMENT_MISSING) counts as queued, not created. `ok` means the
-    learner's attributes were already correct and enrollment verified."""
+    queued counts as queued, not created. `ok` means the learner's attributes were already
+    correct. `auto_resolved` is not a bucket: it counts manual-review items closed because
+    a course rule now covers them."""
     run_id: str
     changes_seen: int = 0
     patched: int = 0
@@ -30,6 +31,7 @@ class RunSummary:
     skipped: int = 0
     failed: int = 0
     ok: int = 0
+    auto_resolved: int = 0
     mode: str = "sync"
 
     def to_dict(self) -> dict:
@@ -98,9 +100,20 @@ def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, r
             return queue_item(store_conn, run_id, cid, wid, lid, f"UNKNOWN_{kind.upper()}",
                               f"{kind} {value!r} not in rules", at)
 
+        def _audit_map(new_lid, detail):
+            # A stale mapping already wrote this run's map_learner row; record the new match
+            # under its own action so the append-only key (run, change, action) holds.
+            act = "map_learner" if not stale else "remap_learner"
+            audit(new_lid, act, "ok", detail)
+
         # Resolve learner.
-        created = False
+        created = stale = False
         lid = store.mapped_learner(store_conn, wid)
+        if lid is not None and not _learner_exists(learning, lid):
+            # The mapped learner was deleted in Ethena: forget it and match again by email.
+            store.unmap_learner(store_conn, wid)
+            audit(lid, "map_learner", "ok", "mapping was stale, re-matched")
+            lid, stale = None, True
         if lid is None:
             email = worker["primaryWorkEmail"]
             found = _step("map_learner", learning.find_learners_by_email, email)
@@ -110,7 +123,7 @@ def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, r
             if found:
                 lid = found[0]["id"]
                 store.map_learner(store_conn, wid, lid, "email", at)
-                audit(lid, "map_learner", "ok", "email")
+                _audit_map(lid, "email")
             elif terminating and recon:
                 audit(None, "terminate_learner", "skipped", "no learner for terminated worker")
                 return "ok"
@@ -125,7 +138,7 @@ def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, r
                 lid = _step("create_learner", learning.create_learner, body)
                 store.map_learner(store_conn, wid, lid, "created", at)
                 audit(lid, "create_learner", "ok", json.dumps(body, sort_keys=True))
-                audit(lid, "map_learner", "ok", "created")
+                _audit_map(lid, "created")
                 created = True
 
         if terminating:
@@ -148,14 +161,10 @@ def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, r
         else:
             audit(lid, "patch_learner", "skipped", "no attribute changes")
 
-        expected = rules.expected_campaigns(attrs)
-        enrolled = {c["campaignName"] for c in
-                    _step("verify_enrollment", learning.campaigns_for_learner, lid)}
-        missing = sorted(expected - enrolled)
-        if missing:
-            return queue_item(store_conn, run_id, cid, wid, lid, "ENROLLMENT_MISSING",
-                              ", ".join(missing), at)
-        audit(lid, "verify_enrollment", "ok", ", ".join(sorted(expected)))
+        # Ethena decides who gets which course; this only records what it now holds.
+        held = sorted({c["campaignName"] for c in
+                       _step("verify_enrollment", learning.campaigns_for_learner, lid)})
+        audit(lid, "verify_enrollment", "ok", ", ".join(held))
         return "created" if created else "patched" if diff else "ok"
     except _StepFailed as exc:
         audit(lid, exc.action, "failed", str(exc))
@@ -164,6 +173,18 @@ def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, r
         # Partial writes (a mapping, a patch) are safe to commit: the change has no terminal
         # audit row yet, so the next run processes it again from the start.
         store_conn.commit()
+
+
+def _learner_exists(learning, lid: str) -> bool:
+    try:
+        learning.get_learner(lid)
+    except ClientError as exc:
+        if exc.status == 404:
+            return False
+        raise _StepFailed("map_learner", exc) from exc
+    except (HrSyncClientError, httpx.HTTPError) as exc:
+        raise _StepFailed("map_learner", exc) from exc
+    return True
 
 
 def new_run_id(now: datetime) -> str:
@@ -191,6 +212,7 @@ def _reconcile_pass(hris, learning, rules, store_conn, summary: RunSummary, now:
                                " resolution='auto: rule added' WHERE id=?",
                                (now.strftime("%Y-%m-%dT%H:%M:%SZ"), item_id))
             store_conn.commit()
+            summary.auto_resolved += 1
     # A person with an open review item is left alone until a reviewer closes it.
     open_workers = {r[0] for r in store_conn.execute(
         "SELECT worker_id FROM review_queue WHERE status='open'")}
@@ -280,5 +302,19 @@ def resolve_with_learner(hris, learning, rules: Rules, store_conn, item_id: int,
         change = hris.get_job_change(change_id)
         outcome = process_change(hris, learning, rules, store_conn, change, new_run_id(now),
                                  now, create_missing=True, force=True)
-    return {"item_id": item_id, "learner_id": learner_id, "change_id": change_id,
-            "outcome": outcome}
+    # Any other account with the same email stays in Ethena: the sync never deletes or
+    # deactivates what it did not create. The report lists it under Duplicate Ethena accounts.
+    try:
+        email = hris.get_worker(worker_id)["primaryWorkEmail"]
+        others = [f["id"] for f in learning.find_learners_by_email(email)
+                  if f["id"] != learner_id and f.get("status") == "ACTIVE"]
+    except (HrSyncClientError, httpx.HTTPError):
+        others = []
+    out = {"item_id": item_id, "learner_id": learner_id, "change_id": change_id,
+           "outcome": outcome, "other_learners": others}
+    if others:
+        word = "account" if len(others) == 1 else "accounts"
+        verb, it = ("still exists", "it is") if len(others) == 1 else ("still exist", "they are")
+        out["note"] = (f"The other {word} ({', '.join(others)}) {verb} in Ethena; {it} listed"
+                       " in the Report under Duplicate Ethena accounts.")
+    return out

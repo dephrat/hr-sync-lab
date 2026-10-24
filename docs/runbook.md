@@ -56,9 +56,8 @@ Each open item names a worker, a job change and a reason. A queued person is lef
 |---|---|---|
 | `UNKNOWN_LOCATION` | The worker's Workday location is not in the rules table, so the sync does not know which country or province rules apply. Nothing was written to Ethena. | Ask the automation builder to add the location (see below). Then `hrsync resolve <id> --map-learner <learner id>` reruns the change with the new rule (how to find the learner id is below the table). If the location should never get training, `--skip` with a note. |
 | `UNKNOWN_PROFILE` | Same, for the job profile. | Same as above, adding the profile. |
-| `AMBIGUOUS_LEARNER` | Two or more Ethena learners share the worker's email (the detail lists their ids). | Decide which learner is the real person, then `hrsync resolve <id> --map-learner <that id>`. Ask Enablement to deactivate the duplicate in Ethena. |
+| `AMBIGUOUS_LEARNER` | Two or more Ethena learners share the worker's email (the detail lists their ids). | Decide which learner is the real person, then `hrsync resolve <id> --map-learner <that id>`. The other account stays in Ethena (the sync never deletes what it did not create) and is listed in the report under Duplicate Ethena accounts; ask Enablement to deactivate it. |
 | `NO_LEARNER_MATCH` | No Ethena learner has the worker's email, and the sync was told not to create one (`--no-create`), or the change is a termination for someone never in Ethena. | If the person exists in Ethena under another email, map them with `--map-learner`. If it is a termination with no learner, `--skip`. Otherwise ask Enablement to create the learner, then map them with `--map-learner`. A later run without `--no-create` leaves the person alone while the item is open. |
-| `ENROLLMENT_MISSING` | Attributes were written, but Ethena did not enroll the person in every campaign the rules expect (the detail names them). Usually a campaign is inactive or its audience in Ethena differs from the rules table. | Send the detail to Enablement to check the campaign's status and audience. Once fixed, `--map-learner` with the same learner id to recheck. |
 
 `--map-learner` saves the worker-to-learner mapping, closes the item as resolved and reprocesses that one job change. `--skip` closes it without touching Ethena. Both record the note in the `resolution` column. If the reprocessed change ends up `queued` or `failed` (for example a new `UNKNOWN_LOCATION`), `resolve` keeps the mapping, prints `item N resolved (mapping saved) but change X is now: queued (...)` and exits 1, so check `hrsync queue` for the new item.
 
@@ -108,3 +107,7 @@ A location sets `country` and either `state` (US) or `customCategory` (Canadian 
 Reset demo puts the workers, learners, sync state and queue back to the clean seed, where the two systems match; Demo a bad day (or `hrsync bad-day`) then injects the job changes and mismatches the sync is for. It is meant for the demo and wipes everything the page created, so never run it against data anyone cares about.
 
 The deployed page sits behind a secret path prefix: `https://hrsync.ephrat.ai/<key>/`. The key is in `/docker/hrsync/.env` on the VPS and in `~/.hrsync-demo-key` on the maintainer's Mac. It is never stored in the repo. To rotate it, follow the last line of [deploy/README.md](../deploy/README.md).
+
+The sync no longer raises `ENROLLMENT_MISSING`: Ethena decides who gets which course (decision 0007). An old open item with that code can be closed with `--skip`.
+
+If a learner the sync had mapped is deleted in Ethena, the next run forgets the mapping (audit `map_learner`, detail `mapping was stale, re-matched`) and matches the person again by email, creating a new account if none is left.

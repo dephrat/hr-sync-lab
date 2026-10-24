@@ -46,15 +46,15 @@ One run of `engine.run`:
 3. Load the worker and resolve the Ethena learner: first `id_map`, then search by work email. One match is stored in `id_map`. Two or more matches queue `AMBIGUOUS_LEARNER`. No match creates the learner, or queues `NO_LEARNER_MATCH` when run with `--no-create` or when the change is a termination.
 4. For a Termination, `PATCH` the learner to `status: TERMINATED` and stop.
 5. Otherwise map job profile and location through the rules table to learner attributes (`isManager`, `country`, `state`, `customCategory`, `department`). An unknown profile or location queues `UNKNOWN_PROFILE` or `UNKNOWN_LOCATION`. Compare with the learner's current attributes and `PATCH` only the fields that differ.
-6. Ask Ethena which campaigns the learner is now in and check that every campaign the rules expect is there. Any missing campaign queues `ENROLLMENT_MISSING`; otherwise write the terminal `verify_enrollment` ok row.
+6. Ask Ethena which courses the learner is now in (removed ones do not count) and write the terminal `verify_enrollment` ok row with their names. This is a record, not a check: Ethena decides who gets which course ([decision 0007](decisions/0007-ethena-owns-course-assignment.md)).
 
 If any HTTP call fails (a 429, a 4xx, a 5xx, a connection error), the engine writes a `failed` audit row for that step, stops the run, and leaves the watermark where it was. The watermark moves to the latest `completedDate` only after every change in the batch was handled.
 
-For Priya, step 5 turns `Sales_Team_Lead` + `Toronto, ON` into `isManager: true, country: CAN, customCategory: ON`. Ethena's campaign audiences then enroll her in Manager Fundamentals and Harassment Prevention (Ontario), and step 6 confirms that they did.
+For Priya, step 5 turns `Sales_Team_Lead` + `Toronto, ON` into `isManager: true, country: CAN, customCategory: ON`. Ethena's campaign audiences then enroll her in Manager Fundamentals and Harassment Prevention (Ontario), and step 6 records them.
 
 ## Why Ethena gets attributes, not assignments
 
-Ethena's API has no "assign this course to this person" call. Enrollment follows campaign audiences, which are rules over learner attributes. So the sync writes attributes and then checks that the expected campaigns appeared. See [decision 0002](decisions/0002-attributes-not-assignments.md).
+Ethena's API has no "assign this course to this person" call. Enrollment follows campaign audiences, which are rules over learner attributes. So the sync writes attributes and then records which courses Ethena gave. See [decision 0002](decisions/0002-attributes-not-assignments.md).
 
 ## What is mocked and why
 

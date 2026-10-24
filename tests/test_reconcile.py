@@ -13,9 +13,9 @@ from hrsync.clients import EthenaClient, WorkdayClient
 from reconcile import report
 
 NOW = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
-SECTIONS = ["Overdue training by department", "In HRIS, not in Ethena",
-            "In Ethena, not in HRIS", "Terminated in HRIS but active in Ethena",
-            "Stale enrollments", "Review queue age"]
+SECTIONS = ["Overdue training by department", "In Workday, not in Ethena",
+            "In Ethena, not in Workday", "Left in Workday but active in Ethena",
+            "Duplicate Ethena accounts", "Stale enrollments", "Review queue age"]
 
 
 @pytest.fixture
@@ -47,26 +47,26 @@ def test_seeded_drift_before_sync(env):
     assert count(md, "Overdue training by department") >= 1
     for title in SECTIONS:
         assert f"## {title}\n" in md
-    assert count(md, "Terminated in HRIS but active in Ethena") == 1
-    assert count(md, "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"])
+    assert count(md, "Left in Workday but active in Ethena") == 1
+    assert count(md, "In Workday, not in Ethena") == len(env["facts"]["absent_workers"])
 
 
 def test_after_sync(env):
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
     md = build(env)
-    assert count(md, "Terminated in HRIS but active in Ethena") == 0
-    assert count(md, "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"])
+    assert count(md, "Left in Workday but active in Ethena") == 0
+    assert count(md, "In Workday, not in Ethena") == len(env["facts"]["absent_workers"])
     jc = env["hc"].post("/jobChanges", json={
         "workerId": env["facts"]["absent_workers"][0], "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Senior Specialist"}).json()
     env["hc"].post(f"/jobChanges/{jc['id']}/approve")
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
-    assert count(build(env), "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"]) - 1
+    assert count(build(env), "In Workday, not in Ethena") == len(env["facts"]["absent_workers"]) - 1
 
 
 def test_sections_shape(env):
     secs = report.sections(*env["paths"], NOW)
-    assert [s["name"] for s in secs] == [n for n, _ in report.SECTIONS]
+    assert [s["name"] for s in secs] == [n for n, _, _ in report.SECTIONS]
     assert [s["title"] for s in secs] == SECTIONS
     for s in secs:
         assert isinstance(s["headers"], list) and isinstance(s["rows"], list)

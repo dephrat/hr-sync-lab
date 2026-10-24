@@ -215,8 +215,12 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
     @r.post("/learner-training-campaigns/{ltc_id}/complete", status_code=204)
     def complete_enrollment(ltc_id: str, conn=Depends(get_conn)):
         """Ethena owns completions: marks the enrollment COMPLETED (its module then reads
-        USER_COMPLETED). The sync never writes this, so the two cannot conflict. Idempotent."""
-        one(conn, "enrollments", ltc_id, "learner training campaign", enrollment_json)
+        USER_COMPLETED). The sync never writes this, so the two cannot conflict. Idempotent.
+        A REMOVED enrollment cannot be completed (409)."""
+        cur = one(conn, "enrollments", ltc_id, "learner training campaign", enrollment_json)
+        if cur["completionStatus"] == "REMOVED":
+            return _error(409, "Conflict", f"learner training campaign {ltc_id} was removed "
+                          "and cannot be completed")
         conn.execute("UPDATE enrollments SET completion_status='COMPLETED' WHERE id=?", (ltc_id,))
         conn.commit()
         return Response(status_code=204)

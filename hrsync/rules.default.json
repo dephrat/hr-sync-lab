@@ -50,51 +50,5 @@
     "Warehouse_Supervisor": {
       "isManager": true
     }
-  },
-  "campaigns": [
-    {
-      "campaignName": "Harassment Prevention (Ontario)",
-      "when": {
-        "country": "CAN",
-        "customCategory": "ON"
-      }
-    },
-    {
-      "campaignName": "Harassment Prevention (British Columbia)",
-      "when": {
-        "country": "CAN",
-        "customCategory": "BC"
-      }
-    },
-    {
-      "campaignName": "Harassment Prevention (US Managers)",
-      "when": {
-        "country": "USA",
-        "isManager": true
-      }
-    },
-    {
-      "campaignName": "Harassment Prevention (US Employees)",
-      "when": {
-        "country": "USA",
-        "isManager": false
-      }
-    },
-    {
-      "campaignName": "Manager Fundamentals",
-      "when": {
-        "isManager": true
-      }
-    },
-    {
-      "campaignName": "Data Privacy Essentials",
-      "when": {}
-    },
-    {
-      "campaignName": "Workplace Safety (Warehouse)",
-      "when": {
-        "department": "Operations"
-      }
-    }
-  ]
+  }
 }

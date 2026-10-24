@@ -35,7 +35,7 @@ def test_run_returns_narratives(client):
     sentences = [c["sentence"] for c in body["changes"]]
     hit = [x for x in sentences if "W-1038" in x]
     assert hit and any("Manager Fundamentals" in x for x in hit)
-    assert any("became a manager" in x.lower() and "Training confirmed" in x for x in hit)
+    assert any("became a manager" in x.lower() and "Ethena now has them in:" in x for x in hit)
     assert all("—" not in x for x in sentences)
     c = body["changes"][0]
     assert {"change_id", "worker_id", "worker_name", "reason", "outcome", "actions"} <= set(c)
@@ -118,7 +118,8 @@ def test_campaigns_audience_text(client):
 def test_explain_absent_worker_no_change(client):
     r = client.post("/api/explain", json={"worker_id": "W-1008",
                                           "campaign_name": "Manager Fundamentals"})
-    assert r.status_code == 200 and "No sync has looked at" in r.json()["sentence"]
+    # I4: not mapped yet (no run), but the learner is found by email.
+    assert r.status_code == 200 and "is enrolled in Manager Fundamentals" in r.json()["sentence"]
     assert client.post("/api/explain", json={"worker_id": "W-1008"}).status_code == 422
     assert client.post("/api/explain", json={"worker_id": "W-9999",
                                              "campaign_name": "Manager Fundamentals"}).status_code == 404
@@ -285,7 +286,7 @@ def test_put_rules_validation(client):
     assert put("job", {"job": "Nope", "isManager": True}).status_code == 422
     ok = put("office", {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}).json()
     assert ok == {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}
-    cleared = put("office", {"office": "Vancouver, BC", "country": None, "region": "BC"}).json()
+    cleared = put("office", {"office": "Vancouver, BC", "country": None, "region": None}).json()
     assert cleared["country"] is None and cleared["region"] is None
     job = put("job", {"job": "Sales_Rep", "isManager": True}).json()
     assert job == {"job": "Sales_Rep", "label": "Sales Rep", "isManager": True}
@@ -344,8 +345,68 @@ def test_toronto_warehouse_worker_gets_both_province_and_safety_courses(tmp_path
 
 
 def test_last_run_survives_a_reload(client):
-    assert client.get("/api/run/last").json() == {"summary": None, "changes": []}
+    assert client.get("/api/run/last").json() == {"summary": None, "changes": [], "notes": []}
     ran = client.post("/api/run").json()
     last = client.get("/api/run/last").json()
     assert last["summary"]["run_id"] == ran["summary"]["run_id"]
     assert [c["sentence"] for c in last["changes"]] == [c["sentence"] for c in ran["changes"]]
+
+
+def test_resolve_mentions_duplicate_and_report_lists_it(client):
+    client.post("/api/run")
+    amb = next(i for i in _queue(client) if i["reason"] == "AMBIGUOUS_LEARNER")
+    keep, other = amb["candidates"][0]["id"], amb["candidates"][1]["id"]
+    r = client.post(f"/api/queue/{amb['id']}/resolve", json={"learner_id": keep}).json()
+    assert other in r["other_learners"] and "Duplicate Ethena accounts" in r["note"]
+    secs = {s["name"]: s for s in client.get("/api/report").json()["sections"]}
+    assert [other] == [row[0] for row in secs["duplicate_accounts"]["rows"]]
+    assert all(row[0] != other for row in secs["in_ethena_not_hris"]["rows"])
+    assert secs["queue_age"]["headers"][-1] == "Waiting"
+    assert all(not str(row[2]).isupper() for row in secs["queue_age"]["rows"])
+
+
+def test_drift_attrs_sentence_and_no_courses_kind(client):
+    items = client.get("/api/drift").json()["items"]
+    assert "courses" not in {i["kind"] for i in items}
+    assert all("needs updating in Ethena:" in i["sentence"] for i in items if i["kind"] == "attrs")
+
+
+def test_validation_messages_and_404_shape(client):
+    r = client.put("/api/rules/job", content=b"{bad", headers={"content-type": "application/json"})
+    assert r.json()["error"] == "the request body is not valid JSON"
+    assert client.put("/api/rules/job", json={}).json()["error"] == "missing field: job"
+    assert client.put("/api/rules/job", json={"job": "Sales_Rep", "isManager": "yes"}).status_code == 422
+    assert client.put("/api/rules/office", json={"office": "Vancouver, BC", "country": "CAN"}).status_code == 422
+    assert client.get("/api/nope").json() == {"error": "not found"}
+    assert client.delete("/api/run").json() == {"error": "method not allowed"}
+
+
+def test_job_change_validation_and_ascii_email(client):
+    bad = client.post("/workday/jobChanges", json={"workerId": "W-1002", "effectiveDate": "tomorrow",
+                                                   "reason": "Data_Change", "businessTitle": "Senior X"})
+    assert bad.status_code == 422
+    w = client.post("/workday/workers", json={"name": "Zoë François", "jobProfile": "Sales_Rep",
+                                              "location": "Toronto, ON"}).json()
+    assert w["primaryWorkEmail"].startswith("zoe.francois.")
+    w2 = client.post("/workday/workers", json={"name": "王 小明", "jobProfile": "Sales_Rep",
+                                               "location": "Toronto, ON"}).json()
+    assert w2["primaryWorkEmail"].startswith("employee.") and w2["descriptor"] == "王 小明"
+
+
+def test_completing_removed_enrollment_is_409(client, settings):
+    c = sqlite3.connect(settings.ethena_db)
+    c.execute("UPDATE enrollments SET completion_status='REMOVED' WHERE id=(SELECT MIN(id) FROM enrollments)")
+    c.commit()
+    eid = c.execute("SELECT MIN(id) FROM enrollments").fetchone()[0]
+    r = client.post(f"/ethena/v1/learner-training-campaigns/{eid}/complete", auth=("x", "test-key"))
+    assert r.status_code == 409 and {"title", "detail"} <= set(r.json())
+
+
+def test_explain_pending_and_terminated_completed(client, settings):
+    client.post("/api/run")
+    jc = client.post("/workday/jobChanges", json={"workerId": "W-1002", "effectiveDate": "2026-10-22",
+                                                  "reason": "Data_Change", "businessTitle": "Senior Thing"}).json()
+    ex = lambda w, c: client.post("/api/explain", json={"worker_id": w, "campaign_name": c}).json()["sentence"]
+    assert "waiting for approval in Workday" in ex("W-1002", "Manager Fundamentals")
+    client.post(f"/workday/jobChanges/{jc['id']}/approve")
+    assert "approved in Workday after the last sync" in ex("W-1002", "Manager Fundamentals")

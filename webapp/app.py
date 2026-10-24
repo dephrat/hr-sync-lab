@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from hrsync import store
 from hrsync.config import Settings
@@ -44,8 +45,25 @@ def create_app(settings: Settings) -> FastAPI:
     @app.exception_handler(RequestValidationError)
     def invalid(request, exc):
         first = exc.errors()[0]
-        where = ".".join(str(x) for x in first["loc"] if x != "body")
-        return JSONResponse({"error": f"invalid {where}: {first['msg']}"}, status_code=422)
+        where = ".".join(str(x) for x in first["loc"] if x not in ("body", "query", "path"))
+        if first.get("type") == "json_invalid":
+            msg = "the request body is not valid JSON"
+        elif first.get("type") == "missing":
+            msg = f"missing field: {where}"
+        else:
+            text = str(first["msg"]).removeprefix("Value error, ")
+            msg = f"{where}: {text}" if where else text
+        return JSONResponse({"error": msg}, status_code=422)
+
+    @app.exception_handler(StarletteHTTPException)
+    def http_error(request, exc):
+        # Same {"error": ...} shape as the API's own errors. The mounted mocks have their own
+        # handlers and keep their own shapes.
+        words = {404: "not found", 405: "method not allowed"}
+        detail = exc.detail if isinstance(exc.detail, str) else None
+        msg = words.get(exc.status_code, detail or "error")
+        return JSONResponse({"error": msg}, status_code=exc.status_code,
+                            headers=getattr(exc, "headers", None))
     app.include_router(api.router)
     app.mount("/workday", bundle.hris_app)
     app.mount("/ethena", bundle.ethena_app)

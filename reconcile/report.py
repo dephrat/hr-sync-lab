@@ -10,15 +10,29 @@ from hrsync import store
 
 QUERIES = Path(__file__).with_name("queries.sql")
 
-# (query name, heading, column headers are taken from the result)
+# (query name, heading, plain column headers in result order). Names are stable keys.
 SECTIONS = [
-    ("overdue_by_department", "Overdue training by department"),
-    ("in_hris_not_ethena", "In HRIS, not in Ethena"),
-    ("in_ethena_not_hris", "In Ethena, not in HRIS"),
-    ("terminated_but_active", "Terminated in HRIS but active in Ethena"),
-    ("stale_enrollments", "Stale enrollments"),
-    ("queue_age", "Review queue age"),
+    ("overdue_by_department", "Overdue training by department", ["Department", "Overdue courses"]),
+    ("in_hris_not_ethena", "In Workday, not in Ethena", ["Worker", "Name", "Email", "Department"]),
+    ("in_ethena_not_hris", "In Ethena, not in Workday", ["Account", "Name", "Email", "Department"]),
+    ("terminated_but_active", "Left in Workday but active in Ethena",
+     ["Worker", "Account", "Email", "Left on"]),
+    ("duplicate_accounts", "Duplicate Ethena accounts",
+     ["Account", "Name", "Email", "Worker", "Account the sync uses"]),
+    ("stale_enrollments", "Stale enrollments", ["Enrollment", "Account", "Course id", "Course"]),
+    ("queue_age", "Review queue age", ["Item", "Worker", "Problem", "Waiting"]),
 ]
+
+# Same wording as the demo page's review queue.
+REASON_LABEL = {"UNKNOWN_LOCATION": "Courses not specified for this office",
+                "UNKNOWN_PROFILE": "Courses not specified for this job",
+                "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
+                "NO_LEARNER_MATCH": "No Ethena account for this person"}
+
+
+def _age(days) -> str:
+    days = int(days or 0)
+    return "today" if days <= 0 else "1 day" if days == 1 else f"{days} days"
 
 
 def load_queries() -> dict[str, str]:
@@ -60,13 +74,14 @@ def sections(hris_db, ethena_db, sync_db, now: datetime) -> list[dict]:
     for alias, path in (("hris", hris_db), ("ethena", ethena_db), ("sync", sync_db)):
         conn.execute(f"ATTACH DATABASE ? AS {alias}", (str(path),))
     out = []
-    for name, title in SECTIONS:
+    for name, title, headers in SECTIONS:
         if name == "stale_enrollments":
-            headers, rows = _stale_enrollments(conn, queries)
+            _, rows = _stale_enrollments(conn, queries)
         else:
             cur = conn.execute(queries[name], {"now": stamp} if ":now" in queries[name] else {})
-            headers = [d[0] for d in cur.description]
             rows = [tuple(r) for r in cur.fetchall()]
+        if name == "queue_age":
+            rows = [(i, w, REASON_LABEL.get(r, r), _age(d)) for i, w, r, d in rows]
         out.append({"name": name, "title": title, "headers": headers,
                     "rows": [list(r) for r in rows]})
     conn.close()

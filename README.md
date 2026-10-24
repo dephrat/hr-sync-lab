@@ -20,7 +20,7 @@ One `hrsync run` (add `--changes-only` to skip the final step on a large tenant)
    `hrsync/rules.default.json` to learner attributes; an unknown profile or location is queued.
 5. Patches only the attributes that differ. Ethena has no "assign course" call: it enrolls people by
    campaign audience, so correct attributes are what trigger enrollment.
-6. Checks the expected campaigns now appear for the learner and queues `ENROLLMENT_MISSING` if not.
+6. Reads the learner's courses back from Ethena and records them in the audit log. Ethena decides who gets which course, so nothing is queued for a course the sync might have expected ([decision 0007](docs/decisions/0007-ethena-owns-course-assignment.md)).
    On any HTTP error the run stops and the watermark stays put.
 7. Runs steps 3 to 6 again for every worker the job changes did not touch (terminated ones too), so
    drift with no Workday event, such as a hand-edited learner, is fixed in the same run.

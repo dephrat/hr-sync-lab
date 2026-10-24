@@ -397,10 +397,10 @@ async function showLearner(l) {
     ["Email", l.email], ["Status", l.status === "ACTIVE" ? "Active" : l.status === "TERMINATED" ? "Left the company" : l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Reports to", l.managerLearnerId], ["Department", l.department],
     ["Category", l.customCategory], ["Worker type", l.workerType],
-  ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
+  ].filter(([k, v]) => !["Reports to", "Category"].includes(k) || (v !== null && v !== undefined && v !== ""))) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
     ["Campaign", (x) => esc(x.campaignName)],
     ["Status", statusOf], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
-    ["", (x) => isDone(x) ? "" : isRemoved(x) ? '<span class="muted">removed</span>' : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
+    ["", (x) => isDone(x) || isRemoved(x) ? "" : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
       `<button type="button" class="mark" data-ltc="${esc(x.id)}">Take course</button>`],
   ]) + '<div id="et-course"></div></div></div>';
   const slot = $("et-course");
@@ -490,7 +490,7 @@ async function loadState() {
   ].map(([k, v, c]) => `<div class="tile ${c}"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
 }
 const DRIFT_GROUPS = [
-  ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
+  ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "terminated"].includes(i.kind),
     "Run sync to update Ethena."],
   ["waiting", "Needs manual review", true, (i) => i.in_queue,
     "Handle them under Needs manual review below."],
@@ -543,7 +543,8 @@ function showRun(r) {
     ? `<div class="note">Nothing to change: checked ${s.changes_seen} people and Ethena already matches Workday. Running again is always safe.</div>` : "";
   const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
     .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
-  $("sy-result").innerHTML = note + (secs || '<p class="muted">No job changes to process.</p>');
+  const notes = (r.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join("");
+  $("sy-result").innerHTML = note + notes + (secs || '<p class="muted">No job changes to process.</p>');
   bindGroups($("sy-result"));
 }
 async function loadLastRun() { showRun(await api("api/run/last")); }
@@ -638,7 +639,7 @@ async function queueAct(b) {
       const OUT = { patched: "Ethena updated", ok: "nothing to change", created: "added to Ethena",
         queued: "queued again for another reason, see the queue", failed: "the rerun failed, see the audit trail" };
       const item = (itemsCache.find((x) => String(x.id) === String(id)) || {});
-      toast(`Mapped ${item.worker_name || "the person"} (${item.worker_id || "?"}) to ${r.learner_id}; ${OUT[r.outcome] || r.outcome}. Item closed.`);
+      toast(`Mapped ${item.worker_name || "the person"} (${item.worker_id || "?"}) to ${r.learner_id}; ${OUT[r.outcome] || r.outcome}. Item closed.${r.note ? " " + r.note : ""}`);
     }
     await Promise.all([loadQueue(), loadState(), loadDrift()]);
     await refreshCards();
@@ -687,7 +688,7 @@ async function showPerson(w) {
 const STATUS_WORDS = { WITHIN_DEADLINE: "in progress", COMPLETED: "completed", INCOMPLETE: "in progress",
   PAST_DEADLINE: "overdue", REMOVED: "removed" };
 const ACTION_WORDS = { load_worker: "Read the Workday record", map_learner: "Matched the Ethena account",
-  create_learner: "Created the Ethena account", patch_learner: "Updated Ethena",
+  create_learner: "Created the Ethena account", remap_learner: "Matched the Ethena account again", patch_learner: "Updated Ethena",
   terminate_learner: "Marked as left the company", verify_enrollment: "Checked their courses",
   queue: "Sent to manual review", skip: "Already handled" };
 const OUTCOME_WORDS = { ok: "done", skipped: "nothing to change", queued: "waiting for a person", failed: "failed" };

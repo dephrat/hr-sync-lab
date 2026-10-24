@@ -238,16 +238,6 @@ def test_failure_after_patch_is_retried(env):
     assert ("skip", "skipped") not in rows
 
 
-def test_enrollment_missing_is_queued(env):
-    data = json.loads((Path(engine.__file__).parent / "rules.default.json").read_text())
-    data["campaigns"].append({"campaignName": "Nonexistent Campaign", "when": {}})
-    env["rules"] = rules.Rules(data)
-    run(env)
-    rows = env["db"].execute("SELECT detail FROM review_queue WHERE reason='ENROLLMENT_MISSING'"
-                             " AND status='open'").fetchall()
-    assert rows and all("Nonexistent Campaign" in d for (d,) in rows)
-
-
 def bucket_total(s):
     return s.skipped + s.queued + s.created + s.terminated + s.patched + s.ok + s.failed
 
@@ -434,3 +424,34 @@ def test_vancouver_set_to_bc_then_sync_gives_bc_course(env, tmp_path):
             "SELECT ca.campaign_name FROM enrollments en JOIN campaigns ca ON ca.id=en.campaign_id "
             "WHERE en.learner_id=? AND en.completion_status!='REMOVED'", (learner_for(env, w["id"]),))}
         assert "Harassment Prevention (British Columbia)" in names
+
+
+def test_stale_mapping_is_rematched_after_bad_day(tmp_path):
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    hc = TestClient(create_hris(tmp_path / "hris.db"))
+    ec = TestClient(create_app(tmp_path / "ethena.db"))
+    ec.auth = ("anyone", "test-key")
+    e = {"hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "db": store.connect(tmp_path / "sync.db"),
+         "rules": rules.load(Path(engine.__file__).parent / "rules.default.json")}
+    assert run(e, full=True).failed == 0
+    facts = bad_day(tmp_path / "hris.db", tmp_path / "ethena.db")
+    s = run(e, full=True)
+    assert s.failed == 0 and s.created >= len(facts["deleted_learner_ids"]) == 3
+    stale = e["db"].execute("SELECT COUNT(*) FROM audit WHERE action='map_learner'"
+                            " AND detail='mapping was stale, re-matched'").fetchone()[0]
+    assert stale == 3
+
+
+def test_removed_enrollment_is_not_held(env):
+    run(env, full=True)
+    wid, lid = env["db"].execute("SELECT worker_id, learner_id FROM id_map LIMIT 1").fetchone()
+    env["learning"].patch_learner(lid, {"status": "TERMINATED"})
+    assert all(c["completionStatus"] != "REMOVED"
+               for c in env["learning"].campaigns_for_learner(lid))
+
+
+def test_no_enrollment_queue_reason_exists(env):
+    run(env, full=True)
+    assert not queue(env, "ENROLLMENT_MISSING")
+    assert env["db"].execute("SELECT COUNT(*) FROM audit WHERE action='verify_enrollment'"
+                             " AND outcome='ok'").fetchone()[0] > 0

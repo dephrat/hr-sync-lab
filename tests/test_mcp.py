@@ -180,4 +180,5 @@ def test_explain_gap_never_synced_sentence(env):
     for t in ("audit", "review_queue", "id_map"):
         env["db"].execute(f"DELETE FROM {t} WHERE worker_id=?", (wid,))
     text = tools.explain_gap(env["hris"], env["learning"], env["db"], env["rules"], wid, "C")
-    assert text.startswith("No sync has looked at") and "Run sync" in text
+    # Not mapped yet, but found by email: the answer comes from Ethena, not "never synced".
+    assert "is not given to" in text and "set in Ethena under Courses" in text
