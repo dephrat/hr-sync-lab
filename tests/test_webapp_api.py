@@ -108,7 +108,7 @@ def test_worker_detail_has_audit_after_run(client):
 
 def test_campaigns_audience_text(client):
     camps = client.get("/api/campaigns").json()
-    assert len(camps) == 6
+    assert len(camps) == 7
     by = {c["campaignName"]: c["audience_text"] for c in camps}
     assert by["Manager Fundamentals"] == "isManager = true"
     assert by["Data Privacy Essentials"] == "everyone (no rules)"

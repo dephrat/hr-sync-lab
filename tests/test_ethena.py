@@ -99,7 +99,7 @@ def test_envelope_has_more(client):
     body = client.get("/v1/learners", params={"limit": 5}).json()
     assert body["limit"] == 5 and body["hasMore"] is True and len(body["data"]) == 5
     last = client.get("/v1/training-campaigns", params={"limit": 100}).json()
-    assert last["hasMore"] is False and len(last["data"]) == 6
+    assert last["hasMore"] is False and len(last["data"]) == 7
 
 
 def test_patch_null_on_required_field_is_422(client):

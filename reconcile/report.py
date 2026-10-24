@@ -27,11 +27,14 @@ def load_queries() -> dict[str, str]:
 
 
 def _stale_enrollments(conn, queries) -> tuple[list[str], list[tuple]]:
-    """Enrollments whose campaign audience no longer matches the learner's attributes.
+    """Unfinished, not-removed enrollments whose campaign audience no longer matches the
+    learner's attributes. Ethena removes those itself, so this should normally be empty.
     Uses the mock's campaign `audience` column; a real tenant would need the campaign
     audience exported, as the Ethena API does not expose it."""
     rows = []
     for r in conn.execute(queries["enrollments_with_audience"]):
+        if r["completion_status"] in ("COMPLETED", "REMOVED"):
+            continue
         if not audience_matches(json.loads(r["audience"]), r):
             rows.append((r["enrollment_id"], r["learner_id"], r["campaign_id"],
                          r["campaign_name"]))

@@ -33,6 +33,8 @@ CAMPAIGNS = [  # (id, course, name, audience)
     ("C000005", "Data Privacy Essentials", "Data Privacy Essentials", [{}]),
     ("C000006", "Workplace Safety", "Workplace Safety (Warehouse)",
      [{"department": ["Operations"]}]),
+    ("C000007", "Harassment Prevention", "Harassment Prevention (British Columbia)",
+     [{"country": ["CAN"], "customCategory": ["BC"]}]),
 ]
 
 

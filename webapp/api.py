@@ -391,7 +391,8 @@ def put_audience(body: AudienceIn, request: Request,
     b = _bundle(request)
     # This edits the mock's store directly: real Ethena audiences are set in its admin UI,
     # not through its API, so there is no API call to make. Ethena's audience engine then
-    # enrolls matching people itself, which is what enroll() does here. Never un-enrolls.
+    # enrolls matching people itself and removes unfinished courses from people who no longer
+    # match (SYSTEM_REMOVED; the real trigger is an assumption). enroll() does both here.
     with WRITE_LOCK:
         conn = ethena_db.connect(b.settings.ethena_db)
         try:

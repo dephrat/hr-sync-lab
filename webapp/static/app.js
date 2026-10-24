@@ -339,7 +339,7 @@ function shortDate(iso) {
 function pills(l) {
   return (l.enrollments || []).map((e) => {
     const cls = isDone(e) ? "done" : isRemoved(e) ? "done" : isLate(e) ? "late" : "";
-    const when = isDone(e) ? "completed" : isRemoved(e) ? "removed, left the company" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
+    const when = isDone(e) ? "completed" : isRemoved(e) ? "removed" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
     return `<span class="tpill ${cls}">${esc(e.campaignName)}<em>${esc(when)}</em></span>`;
   }).join(" ") || '<span class="muted">none</span>';
 }
@@ -400,7 +400,7 @@ async function showLearner(l) {
   ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
     ["Campaign", (x) => esc(x.campaignName)],
     ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
-    ["", (x) => isDone(x) ? "" : isRemoved(x) ? '<span class="muted">removed, left the company</span>' : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
+    ["", (x) => isDone(x) ? "" : isRemoved(x) ? '<span class="muted">removed</span>' : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
       `<button type="button" class="mark" data-ltc="${esc(x.id)}">Take course</button>`],
   ]) + '<div id="et-course"></div></div></div>';
   const slot = $("et-course");

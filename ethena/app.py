@@ -3,7 +3,8 @@
 Enrollment rule (mock-internal): after POST/PATCH /learners, for each ACTIVE campaign whose
 audience matches the learner, a learner-training-campaign is ensured (enrollmentStatus ACTIVE,
 completionStatus WITHIN_DEADLINE, deadline = now + deadlineInDays). Campaigns that no longer
-match are left in place (Ethena does not auto-unenroll). TERMINATED learners get no new
+match, or whose campaign is no longer ACTIVE, have their unfinished enrollments marked REMOVED
+(SYSTEM_REMOVED in the API; the real trigger is an assumption). Completed ones stay. TERMINATED learners get no new
 enrollments. The rule lives in ethena.db.enroll, used here as _enroll.
 """
 import secrets

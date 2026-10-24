@@ -88,10 +88,12 @@ def audience_matches(audience, learner) -> bool:
 
 def enroll(conn, learner_id: str) -> None:
     """Ensure an enrollment (+ module) exists for each ACTIVE campaign matching the learner.
-    Existing enrollments are never deleted. When a learner is TERMINATED or DEACTIVATED,
-    their unfinished enrollments become REMOVED (completed ones stay as records), so people
-    who left stop counting as in progress or overdue. A returning learner gets fresh
-    assignments: matching REMOVED enrollments are reopened with a new deadline."""
+    Enrollment rows are never deleted. Unfinished ones are marked REMOVED (the module reads
+    SYSTEM_REMOVED, mirroring that status in Ethena's API) when the learner is TERMINATED or
+    DEACTIVATED, or when the learner stops matching the campaign's audience or the campaign is
+    no longer ACTIVE. Completed ones stay as records. The exact real-world trigger for
+    SYSTEM_REMOVED is an assumption. Matching REMOVED enrollments are reopened with a new
+    deadline when the learner matches again."""
     learner = conn.execute("SELECT * FROM learners WHERE id=?", (learner_id,)).fetchone()
     if learner is None:
         return
@@ -101,8 +103,17 @@ def enroll(conn, learner_id: str) -> None:
         conn.commit()
         return
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    for c in conn.execute("SELECT * FROM campaigns WHERE status='ACTIVE' ORDER BY id").fetchall():
-        if not audience_matches(json.loads(c["audience"]), learner):
+    campaigns = conn.execute("SELECT * FROM campaigns ORDER BY id").fetchall()
+    keep = {c["id"] for c in campaigns
+            if c["status"] == "ACTIVE" and audience_matches(json.loads(c["audience"]), learner)}
+    for e in conn.execute("SELECT id, campaign_id FROM enrollments WHERE learner_id=? "
+                          "AND completion_status NOT IN ('COMPLETED','REMOVED')",
+                          (learner_id,)).fetchall():
+        if e["campaign_id"] not in keep:
+            conn.execute("UPDATE enrollments SET completion_status='REMOVED' WHERE id=?",
+                         (e["id"],))
+    for c in campaigns:
+        if c["id"] not in keep:
             continue
         existing = conn.execute("SELECT id, completion_status FROM enrollments "
                                 "WHERE learner_id=? AND campaign_id=?",

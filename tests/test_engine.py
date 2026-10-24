@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -394,3 +395,42 @@ def test_pass_two_does_not_duplicate_queue_items(env):
     items, audit_rows = snapshot()
     assert sorted(map(tuple, items)) == sorted(pairs)
     assert audit_rows == first_audit
+
+
+
+def test_move_us_manager_to_ontario_removes_unfinished_us_course(env, tmp_path):
+    h = sqlite3.connect(tmp_path / "hris.db")
+    wid, email = h.execute("SELECT w.id, w.email FROM workers w WHERE w.location='Minneapolis, MN' AND "
+                    "w.is_manager=1 AND w.terminated=0 AND w.active=1 ORDER BY w.id").fetchone()
+    run(env)  # absorb the bad day first
+    e = sqlite3.connect(tmp_path / "ethena.db")
+    lid = e.execute("SELECT id FROM learners WHERE lower(email)=lower(?)", (email,)).fetchone()[0]
+    e.execute("UPDATE enrollments SET completion_status='COMPLETED' WHERE learner_id=? AND "
+              "campaign_id=(SELECT id FROM campaigns WHERE campaign_name='Data Privacy Essentials')",
+              (lid,))
+    e.commit()
+    states = lambda: dict(e.execute(
+        "SELECT ca.campaign_name, en.completion_status FROM enrollments en "
+        "JOIN campaigns ca ON ca.id=en.campaign_id WHERE en.learner_id=?", (lid,)))
+    assert states()["Harassment Prevention (US Managers)"] != "REMOVED"
+    post_change(env, wid, location="Toronto, ON")
+    run(env)
+    got = states()
+    assert got["Harassment Prevention (US Managers)"] == "REMOVED"
+    assert got["Data Privacy Essentials"] == "COMPLETED"
+    assert got["Harassment Prevention (Ontario)"] not in ("REMOVED", "COMPLETED")
+
+
+def test_vancouver_set_to_bc_then_sync_gives_bc_course(env, tmp_path):
+    van = [w for w in env["hris"].list_workers() if w["location"]["descriptor"] == "Vancouver, BC"]
+    assert van
+    rules_data = json.loads((Path(engine.__file__).parent / "rules.default.json").read_text())
+    rules_data["locations"]["Vancouver, BC"] = {"country": "CAN", "customCategory": "BC"}
+    env["rules"] = rules.Rules(rules_data)
+    run(env, full=True)
+    e = sqlite3.connect(tmp_path / "ethena.db")
+    for w in van:
+        names = {r[0] for r in e.execute(
+            "SELECT ca.campaign_name FROM enrollments en JOIN campaigns ca ON ca.id=en.campaign_id "
+            "WHERE en.learner_id=? AND en.completion_status!='REMOVED'", (learner_for(env, w["id"]),))}
+        assert "Harassment Prevention (British Columbia)" in names

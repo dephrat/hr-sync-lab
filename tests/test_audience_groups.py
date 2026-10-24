@@ -66,3 +66,28 @@ def test_second_group_enrolls_bc(client, settings):
     rules = client.get("/api/rules").json()
     assert "Harassment Prevention (Ontario)" in next(
         o for o in rules["offices"] if o["office"] == "Toronto, ON")["courses"]
+
+
+def _states(settings, cid):
+    c = sqlite3.connect(settings.ethena_db)
+    return dict(c.execute("SELECT learner_id, completion_status FROM enrollments "
+                          "WHERE campaign_id=?", (cid,)))
+
+
+def test_edit_to_canada_only_removes_unfinished_but_not_completed(client, settings):
+    c = sqlite3.connect(settings.ethena_db)
+    us_mgr = [r[0] for r in c.execute(
+        "SELECT en.learner_id FROM enrollments en JOIN learners l ON l.id=en.learner_id "
+        "WHERE en.campaign_id='C000004' AND l.country='USA' AND en.completion_status!='REMOVED' "
+        "ORDER BY 1")]
+    assert len(us_mgr) >= 2
+    done = us_mgr[0]
+    c.execute("UPDATE enrollments SET completion_status='COMPLETED' "
+              "WHERE campaign_id='C000004' AND learner_id=?", (done,))
+    c.commit()
+    r = client.put("/api/campaigns/C000004/audience",
+                   json={"groups": [{"isManager": True, "country": "CAN"}]})
+    assert r.status_code == 200
+    got = _states(settings, "C000004")
+    assert got[done] == "COMPLETED"
+    assert all(got[l] == "REMOVED" for l in us_mgr[1:])

@@ -43,7 +43,7 @@ def test_ethena_duplicates_and_campaigns(apps):
     assert e.get_learner(found[0]["id"])["email"] == "emma.park.1042@example.com"
     camps = e.campaigns_for_learner(found[0]["id"])
     assert camps and all(c["courseName"] and c["campaignName"] for c in camps)
-    assert len(e.list_campaigns()) == 6
+    assert len(e.list_campaigns()) == 7
     hp = [c for c in camps if c["campaignName"].startswith("Harassment")]
     assert hp and all(c["courseName"] == "Harassment Prevention" != c["campaignName"] for c in hp)
 

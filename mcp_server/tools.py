@@ -52,7 +52,7 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
         worker = None
     if worker and worker.get("workerStatus", {}).get("terminated"):
         return (f"{worker['descriptor']} has left the company. Ethena assigns no training to "
-                "people who left, and their unfinished courses were removed.")
+                "people who left, and their unfinished courses were removed (also when someone stops matching a course audience).")
     if lid:
         for c in learning.campaigns_for_learner(lid):
             if c.get("campaignName") == campaign_name:

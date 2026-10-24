@@ -60,6 +60,13 @@
       }
     },
     {
+      "campaignName": "Harassment Prevention (British Columbia)",
+      "when": {
+        "country": "CAN",
+        "customCategory": "BC"
+      }
+    },
+    {
       "campaignName": "Harassment Prevention (US Managers)",
       "when": {
         "country": "USA",
