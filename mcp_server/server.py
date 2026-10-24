@@ -86,9 +86,11 @@ def resolve_queue_item(item_id: int, learner_id: str, confirm: bool = False) -> 
 
 @mcp.tool()
 def rerun_sync(confirm: bool = False) -> dict:
-    """WRITES. Runs a full sync pass over job changes since the watermark and returns the
-    summary. Requires confirm=True or it returns an error and changes nothing. Every step is
-    recorded in the audit log. Cost: HTTP calls proportional to the number of new changes."""
+    """WRITES. Runs a full sync and returns the summary: first the job changes since the
+    watermark, then a check of every other Workday worker (terminated ones too) against Ethena,
+    so drift with no Workday event is fixed as well. Requires confirm=True or it returns an
+    error and changes nothing. Every step is recorded in the audit log. Cost: one HTTP call per
+    worker plus Ethena calls."""
     hris, learning, db, rules = _ctx()
     return tools.rerun_sync(hris, learning, rules, db, confirm)
 

@@ -10,6 +10,7 @@ from hrsync import store
 from hrsync.clients import HrisClient, HrSyncClientError, LearningClient
 from hrsync.rules import Rules
 
+RECON_PREFIX = "RECON-"
 ATTR_KEYS = ("isManager", "country", "state", "customCategory", "department")
 
 
@@ -29,6 +30,7 @@ class RunSummary:
     skipped: int = 0
     failed: int = 0
     ok: int = 0
+    mode: str = "sync"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -62,21 +64,34 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
     ok, failed. Commits on return. A Termination for a worker with no learner is queued
     NO_LEARNER_MATCH regardless of create_missing. `force` reprocesses a change even if a
     terminal audit row exists (used when a reviewer resolves its queue item)."""
-    at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     cid, wid = change["id"], change["worker"]["id"]
+    if not force and store.already_processed(store_conn, cid):
+        at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            store.audit(store_conn, run_id, cid, wid, None, "skip", "skipped",
+                        "already processed", at)
+        finally:
+            store_conn.commit()
+        return "skipped"
+    return _sync_worker(hris, learning, rules, store_conn, wid, cid, change["reason"]["id"],
+                        run_id, now, create_missing)
+
+
+def _sync_worker(hris, learning, rules: Rules, store_conn, wid: str, cid: str, reason_id: str,
+                 run_id: str, now: datetime, create_missing: bool = True) -> str:
+    """Bring one worker's learner in line with Workday. `cid` is the audit/queue key: a job
+    change id, or RECON-<worker id> for a reconcile. Commits on return."""
+    at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    recon = cid.startswith(RECON_PREFIX)
     audit = lambda lid, action, outcome, detail: store.audit(
         store_conn, run_id, cid, wid, lid, action, outcome, detail, at)
     lid = None
     try:
-        if not force and store.already_processed(store_conn, cid):
-            audit(None, "skip", "skipped", "already processed")
-            return "skipped"
         worker = _step("load_worker", hris.get_worker, wid)
         profile, location = worker["jobProfile"]["id"], worker["location"]["descriptor"]
         attrs = rules.attributes_for(profile, location,
                                      worker["primarySupervisoryOrganization"]["descriptor"])
-        terminating = change["reason"]["id"] == "Termination"
-
+        terminating = reason_id == "Termination"
         def unknown():
             kind = rules.missing(profile, location)
             value = profile if kind == "profile" else location
@@ -96,6 +111,9 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
                 lid = found[0]["id"]
                 store.map_learner(store_conn, wid, lid, "email", at)
                 audit(lid, "map_learner", "ok", "email")
+            elif terminating and recon:
+                audit(None, "terminate_learner", "skipped", "no learner for terminated worker")
+                return "ok"
             elif terminating or not create_missing:
                 return queue_item(store_conn, run_id, cid, wid, None, "NO_LEARNER_MATCH",
                                   f"no learner with email {email}", at)
@@ -111,6 +129,10 @@ def process_change(hris: HrisClient, learning: LearningClient, rules: Rules, sto
                 created = True
 
         if terminating:
+            if recon and _step("terminate_learner", learning.get_learner, lid).get(
+                    "status") == "TERMINATED":
+                audit(lid, "terminate_learner", "skipped", "already TERMINATED")
+                return "ok"
             _step("terminate_learner", learning.patch_learner, lid, {"status": "TERMINATED"})
             audit(lid, "terminate_learner", "ok", "status TERMINATED")
             return "terminated"
@@ -148,8 +170,36 @@ def new_run_id(now: datetime) -> str:
     return now.strftime("%Y%m%dT%H%M%SZ") + secrets.token_hex(2)
 
 
+def _reconcile_pass(hris, learning, rules, store_conn, summary: RunSummary, now: datetime,
+                    create_missing: bool, skip_workers: frozenset = frozenset()) -> bool:
+    """Check every Workday worker (terminated ones too) not in `skip_workers`, keyed by
+    RECON-<worker id>. Counts into `summary`. False when a client error stopped the pass."""
+    try:
+        workers = hris.list_workers()
+    except (HrSyncClientError, httpx.HTTPError):
+        summary.failed += 1
+        return False
+    for w in workers:
+        if w["id"] in skip_workers:
+            continue
+        summary.changes_seen += 1
+        terminated = bool(w.get("workerStatus", {}).get("terminated"))
+        outcome = _sync_worker(hris, learning, rules, store_conn, w["id"],
+                               RECON_PREFIX + w["id"],
+                               "Termination" if terminated else "Reconcile",
+                               summary.run_id, now, create_missing)
+        setattr(summary, outcome, getattr(summary, outcome) + 1)
+        if outcome == "failed":
+            return False
+    return True
+
+
 def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
-        now: datetime | None = None, create_missing: bool = True) -> RunSummary:
+        now: datetime | None = None, create_missing: bool = True,
+        full: bool = True) -> RunSummary:
+    """Pass 1: job changes since the watermark. Pass 2 (`full`): every worker not touched in
+    pass 1, so drift with no Workday event is fixed too. One run_id, one summary.
+    `full=False` is incremental only, for large tenants on a short schedule."""
     now = now or datetime.now(UTC)
     summary = RunSummary(run_id=new_run_id(now))
     started_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -172,7 +222,21 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
     if changes:
         store.set_watermark(store_conn, max(c["completedDate"] for c in changes))
         store_conn.commit()
+    if full:
+        _reconcile_pass(hris, learning, rules, store_conn, summary, now, create_missing,
+                        frozenset(c["worker"]["id"] for c in changes))
+    if changes or full:
         store.record_run(store_conn, summary.to_dict(), started_at)
+    return summary
+
+
+def reconcile(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
+              now: datetime | None = None, create_missing: bool = True) -> RunSummary:
+    """Only the full pass: every worker, no job-change pass, watermark untouched."""
+    now = now or datetime.now(UTC)
+    summary = RunSummary(run_id=new_run_id(now), mode="reconcile")
+    _reconcile_pass(hris, learning, rules, store_conn, summary, now, create_missing)
+    store.record_run(store_conn, summary.to_dict(), now.strftime("%Y-%m-%dT%H:%M:%SZ"))
     return summary
 
 
@@ -191,8 +255,12 @@ def resolve_with_learner(hris, learning, rules: Rules, store_conn, item_id: int,
     store_conn.execute("UPDATE review_queue SET status='resolved', resolved_at=?, resolution=?"
                        " WHERE id=?", (at, f"mapped:{learner_id}{' ' + note if note else ''}", item_id))
     store_conn.commit()
-    change = hris.get_job_change(change_id)
-    outcome = process_change(hris, learning, rules, store_conn, change, new_run_id(now), now,
-                             create_missing=True, force=True)
+    if change_id.startswith(RECON_PREFIX):
+        outcome = _sync_worker(hris, learning, rules, store_conn, worker_id, change_id,
+                               "Reconcile", new_run_id(now), now, create_missing=True)
+    else:
+        change = hris.get_job_change(change_id)
+        outcome = process_change(hris, learning, rules, store_conn, change, new_run_id(now),
+                                 now, create_missing=True, force=True)
     return {"item_id": item_id, "learner_id": learner_id, "change_id": change_id,
             "outcome": outcome}

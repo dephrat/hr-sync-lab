@@ -51,14 +51,14 @@ def test_seeded_drift_before_sync(env):
 
 
 def test_after_sync(env):
-    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW)
+    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
     md = build(env)
     assert count(md, "Terminated in HRIS but active in Ethena") == 0
     assert count(md, "In HRIS, not in Ethena") == 6
     env["hc"].post("/jobChanges", json={
         "workerId": "W-1008", "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Senior Specialist"})
-    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW)
+    engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
     assert count(build(env), "In HRIS, not in Ethena") == 5
 
 

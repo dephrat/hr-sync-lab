@@ -94,7 +94,7 @@ def _run(settings: Settings, args) -> int:
         print(err, file=sys.stderr)
         return 1
     summary = engine.run(hris, learning, rules.load(settings.rules_path), conn,
-                         create_missing=not args.no_create)
+                         create_missing=not args.no_create, full=not args.changes_only)
     if args.json:
         print(json.dumps(asdict(summary)))
     else:
@@ -179,6 +179,8 @@ def main(argv=None) -> int:
     w.set_defaults(fn=_web)
     r = sub.add_parser("run")
     r.add_argument("--no-create", action="store_true")
+    r.add_argument("--changes-only", action="store_true",
+                   help="skip the full pass over every worker (scale option)")
     r.add_argument("--json", action="store_true")
     r.set_defaults(fn=_run)
     q = sub.add_parser("queue")

@@ -27,8 +27,8 @@ BUCKETS = ("skipped", "queued", "created", "terminated", "patched", "ok", "faile
 def test_run_returns_narratives(client):
     body = client.post("/api/run").json()
     s = body["summary"]
-    assert s["changes_seen"] == 12 and sum(s[b] for b in BUCKETS) == 12
-    assert len(body["changes"]) == 12
+    assert s["changes_seen"] > 12 and sum(s[b] for b in BUCKETS) == s["changes_seen"]
+    assert len(body["changes"]) == s["changes_seen"]
     sentences = [c["sentence"] for c in body["changes"]]
     hit = [x for x in sentences if "W-1038" in x]
     assert hit and any("Manager Fundamentals" in x for x in hit)
@@ -142,7 +142,10 @@ def test_concurrent_runs_process_each_change_once(client):
     # The later run re-sees the boundary change at the watermark and skips it, so count
     # only changes that were actually processed.
     sums = [r.json()["summary"] for r in rs]
-    assert sum(x["changes_seen"] - x["skipped"] for x in sums) == 12
+    first = max(sums, key=lambda x: x["changes_seen"] - x["skipped"])
+    assert first["changes_seen"] - first["skipped"] > 12
+    assert sum(x["patched"] + x["created"] + x["terminated"] for x in sums) == (
+        first["patched"] + first["created"] + first["terminated"])
 
 
 def test_bad_learner_id_is_422(client):
@@ -187,3 +190,12 @@ def test_drift_before_and_after_run(client):
     assert not any(i["worker_id"] == "W-1038" for i in after["items"])
     open_q = {q["worker_id"] for q in client.get("/api/queue").json()}
     assert {i["worker_id"] for i in after["items"] if i["in_queue"]} <= open_q
+
+
+def test_run_clears_pending_drift(client):
+    body = client.post("/api/run").json()
+    assert body["summary"]["changes_seen"] > 12
+    assert any(c["reason"] == "Reconcile" for c in body["changes"])
+    after = client.get("/api/drift").json()
+    assert not [i for i in after["items"]
+                if not i["in_queue"] and i["kind"] in ("attrs", "courses", "terminated")]

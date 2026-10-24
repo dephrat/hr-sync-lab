@@ -144,3 +144,8 @@ def test_stdio_smoke(tmp_path):
     assert names == {"get_worker", "get_learner_status", "get_audit_trail", "list_queue",
                      "explain_gap", "resolve_queue_item", "rerun_sync"}
     assert not res.is_error
+
+
+def test_rerun_sync_is_full(env):
+    r = tools.rerun_sync(env["hris"], env["learning"], env["rules"], env["db"], True)
+    assert r["changes_seen"] > 12 and r["failed"] == 0

@@ -244,7 +244,7 @@ async function loadDrift() {
   const secs = DRIFT_GROUPS.map(([k, title, open, pick]) => [k, title, open, items.filter(pick)])
     .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
   $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
-    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync carries the first group across; the rest need a person or a rules change.</p>' +
+    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync makes Ethena match Workday for everyone; what is left needs a person or a rules-table entry.</p>' +
     (secs || '<p class="allgood">Everything Ethena knows matches Workday.</p>');
   bindGroups($("sy-drift"));
 }
@@ -272,7 +272,7 @@ function groupHtml(key, title, open, items) {
     `<div class="grpbody"${open ? "" : " hidden"}><ul class="changes">${items.map(li).join("")}</ul>${more}</div></section>`;
 }
 async function runSync() {
-  const btn = $("sy-run");
+  const btn = $("sy-run"), label = btn.textContent;
   btn.disabled = true; btn.classList.add("busy"); btn.textContent = "Running...";
   try {
     const r = await api("api/run", { method: "POST" });
@@ -286,7 +286,7 @@ async function runSync() {
     bindGroups($("sy-result"));
     await Promise.all([loadState(), loadQueue(), loadDrift()]);
     await refreshCards();
-  } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = "Run sync"; }
+  } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = label; }
 }
 function ageOf(ts) {
   const t = Date.parse(ts); if (!t) return "";

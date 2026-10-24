@@ -120,3 +120,12 @@ def test_unreachable_mocks_exit_cleanly(env, monkeypatch, capsys):
     item_id = conn.execute("SELECT MAX(id) FROM review_queue").fetchone()[0]
     assert cli.main(["resolve", str(item_id), "--map-learner", "L100001"]) == 2
     assert "cannot reach" in capsys.readouterr().err
+
+
+def test_run_is_full_and_changes_only_is_incremental(env, capsys):
+    capsys.readouterr()
+    assert cli.main(["run", "--json"]) == 0
+    full = json.loads(capsys.readouterr().out)
+    assert full["changes_seen"] > 12 and full["failed"] == 0
+    assert cli.main(["run", "--json", "--changes-only"]) == 0
+    assert json.loads(capsys.readouterr().out)["changes_seen"] <= 1

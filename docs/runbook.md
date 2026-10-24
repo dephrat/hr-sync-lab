@@ -20,7 +20,8 @@ All commands run from the repository root. Settings come from environment variab
 | `RULES_PATH` | `hrsync/rules.default.json` | Rules table |
 
 ```
-uv run hrsync run              # one pass; prints a summary table
+uv run hrsync run              # full run: job changes, then every other worker; prints a summary table
+uv run hrsync run --changes-only  # job changes only (scale option, see below)
 uv run hrsync run --json       # same summary as one JSON line, for logs
 uv run hrsync run --no-create  # queue unknown people instead of creating learners
 uv run hrsync queue            # open review items (add --all to include closed ones)
@@ -29,7 +30,9 @@ uv run hrsync resolve 7 --skip --note "contractor, no training needed"
 uv run hrsync report           # drift report, printed and written to data/report.md
 ```
 
-The summary has `run_id`, `changes_seen` and seven buckets: `patched`, `created`, `terminated`, `queued`, `skipped`, `failed`, `ok`. Each change counts in exactly one bucket, its final outcome, so the buckets add up to `changes_seen`. A change that created a learner and was then queued counts as `queued`. `ok` means the learner already had the right attributes and enrollment was verified.
+One run does two passes under one `run_id`. Pass 1 handles Workday job changes since the watermark, as before. Pass 2 checks every other worker, terminated ones included, against Ethena, keyed `RECON-<worker id>` in the audit log with reason "Reconcile". It fixes drift that happened with no Workday event: a learner hand-edited in Ethena, a rules-table change, a seeded mismatch. A person with nothing to fix costs one Workday call and a few Ethena reads and is recorded as `patch_learner skipped`. Pass 2 never touches the watermark. On a large tenant on a short schedule, use `--changes-only` for the frequent runs and one full run nightly (`0 3 * * *`, same command without the flag).
+
+The summary has `run_id`, `changes_seen` (job changes plus workers checked in pass 2) and seven buckets: `patched`, `created`, `terminated`, `queued`, `skipped`, `failed`, `ok`. Each change counts in exactly one bucket, its final outcome, so the buckets add up to `changes_seen`. A change that created a learner and was then queued counts as `queued`. `ok` means the learner already had the right attributes and enrollment was verified.
 
 `run` exits 0 when every change was handled (queued counts as handled) and 1 when any step failed or a mock could not be reached (it prints `cannot reach ...`, no traceback). `resolve` exits 2 when the item does not exist or is not open, when the learner id is unknown to Ethena, or when a mock could not be reached.
 

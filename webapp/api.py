@@ -181,10 +181,13 @@ def _run_sync(request: Request):
     changes = []
     for change_id, rows in grouped.items():
         wid = rows[0]["worker_id"]
-        try:
-            reason = b.hris.get_job_change(change_id)["reason"]["descriptor"]
-        except (HrSyncClientError, httpx.HTTPError):
-            reason = "Job change"
+        if change_id.startswith(engine.RECON_PREFIX):
+            reason = "Reconcile"
+        else:
+            try:
+                reason = b.hris.get_job_change(change_id)["reason"]["descriptor"]
+            except (HrSyncClientError, httpx.HTTPError):
+                reason = "Job change"
         name = _name(b, names, wid)
         outcome = _outcome(rows)
         changes.append({

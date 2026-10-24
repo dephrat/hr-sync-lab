@@ -27,8 +27,9 @@ def env(tmp_path):
             "db": db, "facts": facts}
 
 
-def run(env, **kw):
-    return engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, **kw)
+def run(env, full=False, **kw):
+    return engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW,
+                      full=full, **kw)
 
 
 def change_for(env, reason, **match):
@@ -286,3 +287,58 @@ def test_failed_changes_fetch_is_recorded(env, monkeypatch):
     assert s.failed == 1
     last = store.last_run(env["db"])
     assert last["run_id"] == s.run_id and last["failed"] == 1
+
+
+def recon(env, **kw):
+    return engine.reconcile(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, **kw)
+
+
+def test_reconcile_fixes_drift_then_is_idempotent(env):
+    flipped = env["facts"]["country_mismatch_workers"]
+    first = recon(env)
+    assert first.mode == "reconcile" and first.failed == 0
+    assert first.changes_seen == len(env["hris"].list_workers())
+    assert first.patched >= len(flipped) and first.terminated >= 1
+    for wid in flipped:
+        rows = env["db"].execute(
+            "SELECT outcome FROM audit WHERE change_id=? AND action='patch_learner'",
+            (f"RECON-{wid}",)).fetchall()
+        assert rows == [("ok",)]
+    van = queue(env, "UNKNOWN_LOCATION")
+    assert van and len({w for w, _ in van}) == len(van)
+    n_open = env["db"].execute("SELECT COUNT(*) FROM review_queue WHERE status='open'").fetchone()[0]
+    assert n_open > 0 and store.get_watermark(env["db"]) is None
+    assert store.last_run(env["db"])["mode"] == "reconcile"
+    second = recon(env)
+    assert second.patched == second.created == second.terminated == 0
+    assert env["db"].execute("SELECT COUNT(*) FROM review_queue WHERE status='open'"
+                             ).fetchone()[0] == n_open
+
+
+def test_run_after_reconcile_still_processes_changes(env):
+    recon(env)
+    s = run(env)
+    assert s.changes_seen == 12 and s.skipped == 0 and s.failed == 0
+    assert s.ok + s.queued > s.patched + s.created
+    assert store.get_watermark(env["db"]) is not None
+
+
+def test_full_run_is_one_run_and_second_is_noop(env):
+    flipped = env["facts"]["country_mismatch_workers"]
+    first = run(env, full=True)
+    total = len(env["hris"].list_workers())
+    changes = first.changes_seen - total + len({
+        c["worker"]["id"] for c in env["hris"].job_changes_since("2000-01-01T00:00:00Z")})
+    assert changes == 12 and first.failed == 0
+    buckets = ("skipped", "queued", "created", "terminated", "patched", "ok", "failed")
+    assert sum(getattr(first, b) for b in buckets) == first.changes_seen
+    assert len(env["db"].execute("SELECT DISTINCT run_id FROM audit").fetchall()) == 1
+    for wid in flipped:
+        assert env["db"].execute("SELECT 1 FROM audit WHERE change_id=? AND action="
+                                 "'patch_learner' AND outcome='ok'",
+                                 (f"RECON-{wid}",)).fetchone() or env["db"].execute(
+            "SELECT 1 FROM audit WHERE worker_id=? AND action='patch_learner' AND outcome='ok'",
+            (wid,)).fetchone()
+    second = run(env, full=True)
+    assert second.patched == second.created == second.terminated == 0
+    assert sum(getattr(second, b) for b in buckets) == second.changes_seen

@@ -6,7 +6,7 @@ Priya, a sales rep in Toronto, is promoted to team lead in Workday on Monday. Co
 
 ## What it does
 
-One `hrsync run`:
+One `hrsync run` (add `--changes-only` to skip the final step on a large tenant):
 
 1. Reads the watermark from `data/sync.db` and fetches Workday job changes completed since then
    (`GET /jobChanges?completedFrom=...`).
@@ -20,6 +20,8 @@ One `hrsync run`:
    campaign audience, so correct attributes are what trigger enrollment.
 6. Checks the expected campaigns now appear for the learner and queues `ENROLLMENT_MISSING` if not.
    On any HTTP error the run stops and the watermark stays put.
+7. Runs steps 3 to 6 again for every worker the job changes did not touch (terminated ones too), so
+   drift with no Workday event, such as a hand-edited learner, is fixed in the same run.
 
 ## Architecture
 
@@ -48,7 +50,7 @@ The story takes six clicks:
 
 1. Open Workday (mock), search for Lucas Fischer (W-1014, a Toronto software engineer), and record a Promotion to Engineering Manager.
 2. In the Ethena tab, check that his learner shows manager = no and has no Manager Fundamentals.
-3. In the Sync tab, press Run sync. The sentence for him reads "Set isManager=true in Ethena. Verified: ..., Manager Fundamentals".
+3. In the Sync tab, press Run sync (it also checks everyone else against Workday and fixes drift with no job change). The sentence for him reads "Set isManager=true in Ethena. Verified: ..., Manager Fundamentals".
 4. Read the sentences the page prints for each change: what was patched, what was queued and why.
 5. Check Ethena again: his attributes changed and he is enrolled in Manager Fundamentals.
 6. Resolve a queue item in the Sync tab, then read the Report tab to see the drift that is left.
@@ -69,8 +71,8 @@ In a second terminal:
 
 ```
 uv run hrsync report                    # before the first run: one terminated-but-active row
-uv run hrsync run                       # changes_seen 12, patched 5, created 0, terminated 1,
-                                        #   queued 3, skipped 0, failed 0, ok 3
+uv run hrsync run                       # changes_seen 100 (12 job changes + 88 other workers),
+                                        #   patched 7, created 5, terminated 1, queued 14, ok 73
 uv run hrsync queue                     # two UNKNOWN_LOCATION (Vancouver, BC), one AMBIGUOUS_LEARNER (W-1042)
 uv run hrsync resolve 1 --skip --note "location not in rules yet"
 uv run hrsync report                    # drift report, also written to data/report.md
