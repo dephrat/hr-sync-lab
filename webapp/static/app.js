@@ -73,7 +73,7 @@ function bindRows(container, rows, onClick) {
 function kv(pairs) {
   return '<dl class="kv">' + pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
 }
-const HINT = '<p class="muted">Press Run sync to carry the pending Workday job changes to Ethena.</p>';
+const HINT = '<p class="muted">Press Run sync.</p>';
 // Per-search request counter: a response that is not the newest request is dropped.
 const seq = { wd: 0, sy: 0 };
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }

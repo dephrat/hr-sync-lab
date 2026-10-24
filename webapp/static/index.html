@@ -26,29 +26,29 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
 <main class="wrap">
   <section id="tab-workday" class="panel" data-accent="workday">
     <h2>Workday (mock HRIS)</h2>
-    <p class="muted">The people system. Change someone's job here, then let the sync carry it to Ethena.</p>
+    <p class="muted">Click a name to change someone's job. Then watch the change sync to Ethena.</p>
     <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
     <div id="wd-detail"></div>
     <div id="wd-table"></div>
     <h3>Recent job changes</h3>
-    <p class="muted">Newest first. These are what the next sync run will pick up.</p>
+    <p class="muted">Newest first. The next sync picks these up.</p>
     <div id="wd-changes"></div>
   </section>
   <section id="tab-ethena" class="panel" data-accent="ethena">
     <h2>Ethena (mock learning platform)</h2>
-    <p class="muted">Read-only. This is what the training system currently believes about each person.</p>
+    <p class="muted">What the training system believes right now. Read-only.</p>
     <input id="et-q" class="search" placeholder="Filter by name, id, email, country, department or category">
     <div id="et-detail"></div>
     <div id="et-table"></div>
     <h3>Campaigns</h3>
-    <p class="muted">Each campaign enrolls people automatically based on their attributes.</p>
+    <p class="muted">Who gets each course, decided by attributes.</p>
     <div id="et-campaigns"></div>
   </section>
   <section id="tab-sync" class="panel" data-accent="sync">
     <h2>Sync</h2>
     <div id="sy-state" class="strip"></div>
     <p><button id="sy-run" class="primary">Run sync</button></p>
-    <div id="sy-result"><p class="muted">Press Run sync to carry the pending Workday job changes to Ethena.</p></div>
+    <div id="sy-result"><p class="muted">Press Run sync.</p></div>
     <h3>Review queue</h3>
     <p class="muted">Changes the sync could not finish on its own. A person decides what happens next.
       <label class="inline"><input type="checkbox" id="sy-all"> show closed</label></p>
