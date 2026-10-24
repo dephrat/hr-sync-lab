@@ -456,8 +456,8 @@ async function loadRules() {
   const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th><th><a href="#ethena/courses">So they get (set in Ethena)</a></th></tr>` +
     `<tr class="sub"><th>${first}</th><th>${a}</th>${b ? `<th>${b}</th>` : ""}<th></th></tr></thead>`;
   $("sy-rules").innerHTML =
-    `<h4>By office</h4><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table>` +
-    `<h4>By job</h4><table class="rules">${head("Job", "Manager")}<tbody>${r.jobs.map(job).join("")}</tbody></table>` +
+    `<div class="rblock"><h4>By office</h4><div class="tablewrap"><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table></div></div>` +
+    `<div class="rblock"><h4>By job</h4><div class="tablewrap"><table class="rules">${head("Job", "Manager")}<tbody>${r.jobs.map(job).join("")}</tbody></table></div></div>` +
     `<p class="muted">Everyone also gets: ${(r.everyone || []).map(esc).join(", ") || "nothing else"}.</p>`;
   const saved = async (url, body) => {
     await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -481,12 +481,13 @@ async function loadRules() {
 async function loadState() {
   const s = await api("api/state");
   const last = s.last_run;
+  const failed = s.failed_last_run ?? 0, open = s.open_queue ?? 0;
   $("sy-state").innerHTML = [
-    ["Last run", last ? when(last.started_at) : "never"],
-    ["Watermark", s.watermark ? when(s.watermark) : "none yet"],
-    ["Open queue items", s.open_queue ?? 0],
-    ["Failed steps last run", s.failed_last_run ?? 0],
-  ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
+    ["Last sync", last ? when(last.started_at) : "never", ""],
+    ["Waiting for a person", open, open ? "warn" : "ok"],
+    ["Failed last run", failed, failed ? "bad" : "ok"],
+    ["Workday changes read up to", s.watermark ? when(s.watermark) : "none yet", ""],
+  ].map(([k, v, c]) => `<div class="tile ${c}"><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
 }
 const DRIFT_GROUPS = [
   ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
@@ -504,7 +505,7 @@ async function loadDrift() {
   const d = await api("api/drift");
   const items = (d.items || []).map((i) => ({ ...i, outcome: i.in_queue ? "ok" : "queued" }));
   const secs = DRIFT_GROUPS.map(([k, title, open, pick, todo]) => [k, title, open, items.filter(pick), todo])
-    .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
+    .filter((g) => g[3].length).map((g) => groupHtml(...g, 3)).join("");
   $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
     '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync makes Ethena match Workday for everyone; what is left needs a person or a course rule.</p>' +
     (secs || '<p class="allgood">Everything Ethena knows matches Workday.</p>');
@@ -525,9 +526,9 @@ function bindGroups(root) {
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
   ["unchanged", "Checked, nothing to change", false, false]];
-function groupHtml(key, title, open, items, todo) {
-  const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= 10 ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
-  const more = items.length > 10 ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
+function groupHtml(key, title, open, items, todo, cap = 10) {
+  const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= cap ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
+  const more = items.length > cap ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
   return `<section class="grp g-${key}"><button type="button" class="grphead" aria-expanded="${open}">` +
     `<span class="caret">${open ? "\u25be" : "\u25b8"}</span> ${esc(title)} (${items.length})` +
     (todo ? ` <em class="grptodo">${esc(todo)}</em>` : "") + "</button>" +
@@ -607,13 +608,13 @@ function outcomeOf(q) {
 function queueActions(q) {
   const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional)" size="28"></div>`;
   const dismiss = `<button data-act="skip" data-id="${esc(q.id)}">Dismiss</button>`;
-  if (q.needs_rule) return '<div class="help">Add it under Course rules, then run sync. If this person needs no training, dismiss it.</div>' +
-    note + `<div class="row" style="margin-top:4px">${dismiss}</div>`;
+  if (q.needs_rule) return '<div class="qa"><p class="qa-do">Add this office or job under Course rules (further down), then run sync. If this person needs no training, dismiss it.</p>' +
+    note + `<div class="row">${dismiss}</div></div>`;
   const cands = q.candidates || [];
   const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick an account</option>${cands.map((c) =>
     `<option value="${esc(c.id)}">${esc([c.id, c.name, c.email].filter(Boolean).join(" · "))}</option>`).join("")}</select> ` : "";
-  return `<div class="help">Pick which Ethena account is really this person.</div><div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type an account id" size="20">
-    </div>${note}<div class="row" style="margin-top:4px"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Use this account</button> ${dismiss}</div>`;
+  return `<div class="qa"><p class="qa-do">Pick which Ethena account is really this person.</p><div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type an account id" size="20">
+    </div>${note}<div class="row"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Use this account</button> ${dismiss}</div></div>`;
 }
 async function queueAct(b) {
   const id = b.dataset.id, box = $("sy-queue");
@@ -666,14 +667,14 @@ async function showPerson(w) {
     <div class="card"><h4>Enrollments</h4>${(d.enrollments || []).length ? table(d.enrollments, [
       ["Campaign", (x) => esc(x.campaignName)], ["Status", (x) => esc(x.completionStatus)],
       ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
-    <h4>Sync activity, newest first</h4>
+    <div class="sy-sub"><h4>Sync activity, newest first</h4>
     <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show all</label></p>
     <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), [
       ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
-      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") + "</div>" +
-    `<h4>Why isn't ${esc(wk.descriptor || w.id)} in a course?</h4>
+      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") + "</div></div>" +
+    `<div class="why"><h4>Why isn't ${esc(wk.descriptor || w.id)} in a course?</h4>
     <form id="ex-form" class="row"><select id="ex-campaign">${options((await campaigns()).map((c) => c.campaignName))}</select>
-    <button class="primary">Explain</button></form><div id="ex-out"></div>`;
+    <button class="primary">Explain</button></form><div id="ex-out"></div></div>`;
   $("ex-form").addEventListener("submit", guard((ev) => explain(ev, wk.id || w.id)));
   $("sy-allaudit").addEventListener("change", () => {
     const rows = $("sy-allaudit").checked ? d.audit : d.audit.filter((a) => a.outcome !== "skipped");

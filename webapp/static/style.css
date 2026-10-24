@@ -201,7 +201,7 @@ ul.inbox .acts { display: flex; gap: 8px; }
 .theme-sync .sy-bar { margin: 0 -20px 8px; padding: 10px 20px; border-bottom: 1px solid var(--line); }
 .theme-sync .pname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .theme-sync .pnote { font-size: 12px; color: var(--muted); }
-.strip { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.strip { font-size: 13px; }
 .drift { border: 1px solid #d4a72c; background: #fff8e5; border-radius: 4px; padding: 4px 14px; margin: 10px 0; }
 .drift:empty { display: none; }
 @media (max-width: 700px) { .hire { grid-template-columns: 1fr; } .et-rail { display: none; } .et-main { padding: 16px; } .c-steps { flex-basis: 100%; border-right: none; } }
@@ -249,3 +249,25 @@ a.g-add { font-size: 13px; }
 .theme-sync .grptodo { color: #5a5a5a; }
 .theme-sync table th { font-size: 12px; }
 .theme-sync .search { max-width: 520px; min-height: 38px; }
+.theme-sync .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; padding: 0; border: 0; background: none; }
+.tile { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; }
+.tile b { font-size: 12px; color: #555 !important; }
+.tile span { font-size: 15px; font-weight: 600; color: #222; }
+.tile.warn { border-left: 4px solid #E0A100; } .tile.bad { border-left: 4px solid #C62828; } .tile.bad span { color: #C62828; }
+.theme-sync .showall { display: inline-block; margin: 2px 0 6px 4px; font-size: 13px; color: #0875e1; }
+.qa { display: flex; flex-direction: column; gap: 6px; }
+.qa-do { margin: 0; font-weight: 600; color: #222; }
+.qa input, .qa select { min-height: 34px; }
+#sy-queue td { padding: 10px; }
+#sy-queue td:last-child { min-width: 300px; background: #fcfcfc; }
+.rblock { border: 1px solid var(--line); border-radius: 4px; padding: 4px 12px 2px; margin: 12px 0; }
+.rblock h4 { margin: 8px 0 4px; }
+.rblock table.rules { margin: 4px 0 10px; }
+#sy-rules > p.muted { margin-top: 4px; }
+#sy-detail:not(:empty) { border: 1px solid var(--line); border-radius: 4px; padding: 8px 14px 14px; margin-top: 12px; background: #fafafa; }
+#sy-detail .card { background: #fff; }
+.sy-sub { margin-top: 14px; }
+.sy-sub h4, .why h4 { margin: 0 0 4px; }
+.why { margin-top: 14px; border: 1px solid #c9d6e8; background: #f3f7fc; border-radius: 4px; padding: 10px 14px; }
+.why select { min-height: 34px; }
+#sy-results:not(:empty) { margin-top: 4px; }
