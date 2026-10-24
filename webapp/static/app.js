@@ -535,13 +535,21 @@ async function showPerson(w) {
     <div class="card"><h4>Enrollments</h4>${(d.enrollments || []).length ? table(d.enrollments, [
       ["Campaign", (x) => esc(x.campaignName)], ["Status", (x) => esc(x.completionStatus)],
       ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
-    <h4>Sync activity, newest first</h4>` + ((d.audit || []).length ? table(d.audit, [
+    <h4>Sync activity, newest first</h4>
+    <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show checks that changed nothing</label></p>
+    <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), [
       ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
-      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") +
+      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") + "</div>" +
     `<h4>Why isn't ${esc(wk.descriptor || w.id)} in a course?</h4>
     <form id="ex-form" class="row"><select id="ex-campaign">${options((await campaigns()).map((c) => c.campaignName))}</select>
     <button class="primary">Explain</button></form><div id="ex-out"></div>`;
   $("ex-form").addEventListener("submit", guard((ev) => explain(ev, wk.id || w.id)));
+  $("sy-allaudit").addEventListener("change", () => {
+    const rows = $("sy-allaudit").checked ? d.audit : d.audit.filter((a) => a.outcome !== "skipped");
+    $("sy-audit").innerHTML = rows.length ? table(rows, [
+      ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
+      ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>";
+  });
 }
 async function explain(ev, workerId) {
   ev.preventDefault();

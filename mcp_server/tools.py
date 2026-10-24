@@ -46,9 +46,18 @@ def list_queue(store_conn) -> list[dict]:
 
 def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name: str) -> str:
     lid = store.mapped_learner(store_conn, worker_id)
+    try:
+        worker = hris.get_worker(worker_id)
+    except HrSyncClientError:
+        worker = None
+    if worker and worker.get("workerStatus", {}).get("terminated"):
+        return (f"{worker['descriptor']} has left the company. Ethena assigns no training to "
+                "people who left, and their unfinished courses were removed.")
     if lid:
         for c in learning.campaigns_for_learner(lid):
             if c.get("campaignName") == campaign_name:
+                if c.get("completionStatus") == "REMOVED":
+                    continue
                 return (f"Learner {lid} is enrolled in {campaign_name!r} "
                         f"(status {c.get('completionStatus')}, deadline {c.get('deadline')}).")
     item = store_conn.execute(
