@@ -1,5 +1,6 @@
 """JSON endpoints for the demo page. Every write goes through the sync engine or store."""
 import json
+import re
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -145,13 +146,17 @@ def _sentence(name, wid, reason, outcome, rows) -> str:
         return f"{head} Failed at {bad['action']}: {bad['detail']}"
     if outcome == "queued":
         code, _, detail = by["queue"]["detail"].partition(": ")
-        return f"{head} Needs a person: {REASON_LABEL.get(code, code)}. {detail}"
+        # Quote the offending value instead of repeating the engine's detail text.
+        quoted = re.search(r"'([^']+)'", detail)
+        tail = f" ({quoted.group(1)})" if quoted else ""
+        return f"{head} Needs a person: {REASON_LABEL.get(code, code)}{tail}."
     if outcome == "terminated":
         return f"{head} Marked as left the company; Ethena will assign no more training."
     if outcome == "created":
         return f"{head} Added to Ethena. {trained}"
     if outcome == "patched":
-        return f"{head} {_phrase(by['patch_learner']['detail'])}. {trained}"
+        phrase = _phrase(by["patch_learner"]["detail"])
+        return f"{head} {phrase[:1].upper() + phrase[1:]}. {trained}"
     return f"{head} Nothing to change. {trained}"
 
 
