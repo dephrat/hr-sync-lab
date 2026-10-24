@@ -4,7 +4,7 @@ SELECT COALESCE(w.department, l.department, '(unknown)') AS department,
 FROM ethena.enrollments en
 JOIN ethena.learners l ON l.id = en.learner_id
 LEFT JOIN hris.workers w ON lower(w.email) = lower(l.email)
-WHERE en.deadline < :now AND en.completion_status != 'COMPLETED'
+WHERE en.deadline < :now AND en.completion_status NOT IN ('COMPLETED', 'REMOVED')
 GROUP BY 1 ORDER BY overdue DESC, department;
 
 -- name: in_hris_not_ethena

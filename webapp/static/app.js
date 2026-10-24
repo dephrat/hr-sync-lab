@@ -255,13 +255,15 @@ async function renderEthena() {
 }
 // Admin-hub style counts across every enrollment.
 function renderStats() {
-  const all = learners.flatMap((l) => l.enrollments || []);
+  // Courses removed because the person left do not count anywhere.
+  const all = learners.flatMap((l) => l.enrollments || []).filter((e) => !isRemoved(e));
   const done = all.filter(isDone).length, late = all.filter(isLate).length;
   $("et-stats").innerHTML = [["Completed", done, "ok"], ["In progress", all.length - done - late, "on"], ["Overdue", late, "late"]]
     .map(([k, v, c]) => `<div class="stat ${c}"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 const isDone = (e) => /COMPLETE/i.test(e.completionStatus || "");
-const isLate = (e) => !isDone(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||
+const isRemoved = (e) => /REMOVED/i.test(e.completionStatus || "");
+const isLate = (e) => !isDone(e) && !isRemoved(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||
   (e.deadline && Date.parse(e.deadline) < Date.now()));
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function shortDate(iso) {
@@ -270,8 +272,8 @@ function shortDate(iso) {
 }
 function pills(l) {
   return (l.enrollments || []).map((e) => {
-    const cls = isDone(e) ? "done" : isLate(e) ? "late" : "";
-    const when = isDone(e) ? "completed" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
+    const cls = isDone(e) ? "done" : isRemoved(e) ? "done" : isLate(e) ? "late" : "";
+    const when = isDone(e) ? "completed" : isRemoved(e) ? "removed, left the company" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
     return `<span class="tpill ${cls}">${esc(e.campaignName)}<em>${esc(when)}</em></span>`;
   }).join(" ") || '<span class="muted">none</span>';
 }
@@ -332,7 +334,7 @@ async function showLearner(l) {
   ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
     ["Campaign", (x) => esc(x.campaignName)],
     ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
-    ["", (x) => isDone(x) ? "" : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
+    ["", (x) => isDone(x) ? "" : isRemoved(x) ? '<span class="muted">removed, left the company</span>' : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
       `<button type="button" class="mark" data-ltc="${esc(x.id)}">Take course</button>`],
   ]) + '<div id="et-course"></div></div></div>';
   const slot = $("et-course");

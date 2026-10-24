@@ -75,16 +75,31 @@ def audience_matches(audience: dict, learner) -> bool:
 
 def enroll(conn, learner_id: str) -> None:
     """Ensure an enrollment (+ module) exists for each ACTIVE campaign matching the learner.
-    Existing enrollments are never removed. TERMINATED/DEACTIVATED learners get nothing new."""
+    Existing enrollments are never deleted. When a learner is TERMINATED or DEACTIVATED,
+    their unfinished enrollments become REMOVED (completed ones stay as records), so people
+    who left stop counting as in progress or overdue. A returning learner gets fresh
+    assignments: matching REMOVED enrollments are reopened with a new deadline."""
     learner = conn.execute("SELECT * FROM learners WHERE id=?", (learner_id,)).fetchone()
-    if learner is None or learner["status"] != "ACTIVE":
+    if learner is None:
+        return
+    if learner["status"] != "ACTIVE":
+        conn.execute("UPDATE enrollments SET completion_status='REMOVED' "
+                     "WHERE learner_id=? AND completion_status != 'COMPLETED'", (learner_id,))
+        conn.commit()
         return
     now = datetime.now(timezone.utc).replace(microsecond=0)
     for c in conn.execute("SELECT * FROM campaigns WHERE status='ACTIVE' ORDER BY id").fetchall():
         if not audience_matches(json.loads(c["audience"]), learner):
             continue
-        if conn.execute("SELECT 1 FROM enrollments WHERE learner_id=? AND campaign_id=?",
-                        (learner_id, c["id"])).fetchone():
+        existing = conn.execute("SELECT id, completion_status FROM enrollments "
+                                "WHERE learner_id=? AND campaign_id=?",
+                                (learner_id, c["id"])).fetchone()
+        if existing:
+            if existing["completion_status"] == "REMOVED":
+                conn.execute("UPDATE enrollments SET completion_status='WITHIN_DEADLINE', "
+                             "enrolled_at=?, deadline=? WHERE id=?",
+                             (_iso(now), _iso(now + timedelta(days=c["deadline_in_days"])),
+                              existing["id"]))
             continue
         n = conn.execute("SELECT COUNT(*) FROM enrollments").fetchone()[0] + 1
         while conn.execute("SELECT 1 FROM enrollments WHERE id=?", (f"LTC{n:06d}",)).fetchone():

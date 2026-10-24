@@ -72,3 +72,28 @@ def test_sections_shape(env):
         assert isinstance(s["headers"], list) and isinstance(s["rows"], list)
     md = build(env)
     assert all(f"## {t}" in md for t in SECTIONS)
+
+
+def test_terminated_learner_courses_leave_the_overdue_report(env):
+    """People who left stop counting: their unfinished courses become REMOVED, and a
+    returning learner gets them reopened."""
+    import sqlite3
+    hris_db, ethena_db, sync_db = env["paths"]
+    e = sqlite3.connect(ethena_db)
+    stamp = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
+    lid, = e.execute("SELECT learner_id FROM enrollments WHERE deadline < ? LIMIT 1",
+                     (stamp,)).fetchone()
+    before = report.sections(hris_db, ethena_db, sync_db, NOW)
+    overdue_before = sum(r[1] for r in next(x for x in before
+                                           if x["name"] == "overdue_by_department")["rows"])
+    env["learning"].patch_learner(lid, {"status": "TERMINATED"})
+    statuses = {r[0] for r in e.execute(
+        "SELECT completion_status FROM enrollments WHERE learner_id=?", (lid,))}
+    assert statuses <= {"REMOVED", "COMPLETED"}
+    after = report.sections(hris_db, ethena_db, sync_db, NOW)
+    overdue_after = sum(r[1] for r in next(x for x in after
+                                          if x["name"] == "overdue_by_department")["rows"])
+    assert overdue_after < overdue_before
+    env["learning"].patch_learner(lid, {"status": "ACTIVE"})
+    assert "REMOVED" not in {r[0] for r in e.execute(
+        "SELECT completion_status FROM enrollments WHERE learner_id=?", (lid,))}

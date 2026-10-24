@@ -69,7 +69,8 @@ def enrollment_json(r) -> dict:
 def module_json(r) -> dict:
     return {"id": r["id"], "learnerId": r["learner_id"], "learnerTrainingCampaignId": r["enrollment_id"],
             "moduleName": r["module_name"], "lengthInMinutes": r["length_in_minutes"],
-            "status": "USER_COMPLETED" if r["completion_status"] == "COMPLETED" else r["completion_status"],
+            "status": {"COMPLETED": "USER_COMPLETED", "REMOVED": "SYSTEM_REMOVED"}.get(
+                r["completion_status"], r["completion_status"]),
             "assignedAt": r["assigned_at"]}
 
 
