@@ -443,7 +443,7 @@ const DRIFT_GROUPS = [
   ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
     "Run sync to update Ethena."],
   ["waiting", "Needs manual review", true, (i) => i.in_queue,
-    "Resolve or skip under Needs manual review."],
+    "Handle them under Needs manual review below."],
   ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous",
     "Run sync, then manual review."],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
@@ -527,27 +527,44 @@ function detailOf(q) {
 }
 let itemsCache = [];
 async function loadQueue() {
-  const items = await api("api/queue?all=" + ($("sy-all").checked ? 1 : 0));
+  const items = await api("api/queue?all=1");
   itemsCache = items;
+  const open = items.filter((q) => q.status === "open"), closed = items.filter((q) => q.status !== "open");
   const box = $("sy-queue");
-  box.innerHTML = table(items, [
-    ["Why", (q) => `${esc(q.reason_label)}<div class="help">${esc(q.reason)}</div>`],
+  box.innerHTML = table(open, [
     ["Person", (q) => `${esc(q.worker_name)}<div class="help">${esc(q.worker_id)}</div>`],
-    ["Details", (q) => esc(detailOf(q))], ["Waiting", (q) => esc(ageOf(q.created_at))],
-    ["What you can do", (q) => queueActions(q)],
-  ], false, $("sy-all").checked ? "Nothing in the queue yet, open or closed." : "Nothing is waiting for a person.");
+    ["Problem", (q) => `${esc(q.reason_label)}<div class="help">${esc(detailOf(q))}</div>`],
+    ["Waiting", (q) => esc(ageOf(q.created_at))],
+    ["What to do", (q) => queueActions(q)],
+  ], false, "Nothing is waiting for a person.");
   box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", guard(() => queueAct(b))));
+  // Everything already dealt with, newest first, tucked away under a toggle.
+  const hist = $("sy-history"), wasOpen = !!(hist.querySelector("details") || {}).open;
+  hist.innerHTML = closed.length ? `<details${wasOpen ? " open" : ""}><summary>History (${closed.length})</summary>` +
+    table(closed.slice().sort((x, y) => String(y.resolved_at || "").localeCompare(String(x.resolved_at || ""))), [
+      ["When", (q) => esc(when(q.resolved_at || q.created_at))],
+      ["Person", (q) => esc(q.worker_name)],
+      ["Problem", (q) => esc(q.reason_label)],
+      ["Outcome", (q) => esc(outcomeOf(q))],
+    ]) + "</details>" : "";
+}
+function outcomeOf(q) {
+  const r = String(q.resolution || "");
+  if (r.startsWith("auto")) return "Fixed automatically after a rule was added";
+  if (r.startsWith("mapped:")) return `Matched to account ${r.slice(7).trim()}`;
+  if (q.status === "skipped") return `Dismissed${r.replace(/^skipped:?/, "").trim() ? ": " + r.replace(/^skipped:?/, "").trim() : ""}`;
+  return q.status;
 }
 function queueActions(q) {
-  if (q.status !== "open") return `${q.status === "resolved" ? "Resolved" : "Skipped"}${q.resolution ? `<div class="help">${esc(q.resolution)}</div>` : ""}`;
-  const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional, saved with Resolve or Skip)" size="32"></div>`;
-  const skip = `<button data-act="skip" data-id="${esc(q.id)}">Skip</button>`;
-  if (q.needs_rule) return '<div class="help">Add this location or job profile to the rules table (automation builder). Skip if no training applies.</div>' + note + `<div class="row" style="margin-top:4px">${skip}</div>`;
+  const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional)" size="28"></div>`;
+  const dismiss = `<button data-act="skip" data-id="${esc(q.id)}">Dismiss</button>`;
+  if (q.needs_rule) return '<div class="help">Add it under Translation rules, then run sync. If this person needs no training, dismiss it.</div>' +
+    note + `<div class="row" style="margin-top:4px">${dismiss}</div>`;
   const cands = q.candidates || [];
-  const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick a learner</option>${cands.map((c) =>
+  const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick an account</option>${cands.map((c) =>
     `<option value="${esc(c.id)}">${esc([c.id, c.name, c.email].filter(Boolean).join(" · "))}</option>`).join("")}</select> ` : "";
-  return `<div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type a learner id, e.g. L100039" size="24">
-    </div>${note}<div class="row" style="margin-top:4px"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Resolve</button> ${skip}</div>`;
+  return `<div class="help">Pick which Ethena account is really this person.</div><div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type an account id" size="20">
+    </div>${note}<div class="row" style="margin-top:4px"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Use this account</button> ${dismiss}</div>`;
 }
 async function queueAct(b) {
   const id = b.dataset.id, box = $("sy-queue");
@@ -556,13 +573,13 @@ async function queueAct(b) {
   try {
     if (b.dataset.act === "skip") {
       await api(`api/queue/${id}/skip`, { method: "POST", body: { note } });
-      toast(`Queue item ${id} skipped.`);
+      toast("Dismissed. It is in the history below.");
     } else {
       const sel = box.querySelector(`[data-sel="${id}"]`), free = box.querySelector(`[data-free="${id}"]`);
       const typed = free ? free.value.trim() : "";
       if (typed && sel) sel.value = "";  // a typed id is the more deliberate action and wins
       const learner = typed || (sel && sel.value) || "";
-      if (!learner) { toast("Pick a learner or type a learner id first.", "error"); return; }
+      if (!learner) { toast("Pick an account first.", "error"); return; }
       const r = await api(`api/queue/${id}/resolve`, { method: "POST", body: { learner_id: learner, note } });
       const OUT = { patched: "Ethena updated", ok: "nothing to change", created: "added to Ethena",
         queued: "queued again for another reason, see the queue", failed: "the rerun failed, see the audit trail" };
@@ -655,7 +672,6 @@ async function reset() {
   ["wd-detail", "et-detail", "sy-detail", "sy-results"].forEach((id) => { $(id).innerHTML = ""; });
   $("sy-result").innerHTML = HINT;
   ["wd-q", "et-q", "sy-q"].forEach((id) => { $(id).value = ""; });
-  $("sy-all").checked = false;
   seq.wd++; seq.sy++;
   cur.worker = cur.learner = cur.person = null;
   toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
@@ -668,7 +684,6 @@ $("wd-q").addEventListener("input", debounce(guard(() => { wdPage = 0; return lo
 $("et-q").addEventListener("input", debounce(filterLearners, 150));
 $("sy-run").addEventListener("click", guard(runSync));
 $("sy-bad").addEventListener("click", guard(badDay));
-$("sy-all").addEventListener("change", guard(loadQueue));
 $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 initHire();

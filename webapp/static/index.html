@@ -63,9 +63,9 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">Every person the sync looked at, grouped by what happened to them.</p>
     <div id="sy-result"><p class="muted">Nothing yet. Press Run sync.</p></div>
     <h3>Needs manual review</h3>
-    <p class="muted">People the sync would not decide about on its own. Resolve picks the right Ethena account and re-runs; Skip closes the item without touching Ethena.
-      <label class="inline"><input type="checkbox" id="sy-all"> include closed items</label></p>
+    <p class="muted">The sync stopped on these. Each row says what to do.</p>
     <div id="sy-queue"></div>
+    <div id="sy-history"></div>
     <h3>Translation rules</h3>
     <p class="muted">How Workday's offices and jobs translate into what Ethena understands. This is the knowledge someone used to carry in their head; the sync applies it on every run.</p>
     <div id="sy-rules"></div>
