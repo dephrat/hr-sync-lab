@@ -180,6 +180,17 @@ def _reconcile_pass(hris, learning, rules, store_conn, summary: RunSummary, now:
     except (HrSyncClientError, httpx.HTTPError):
         summary.failed += 1
         return False
+    # A rule added since the item was queued unblocks it: close it and fall through to the
+    # normal check of that worker below.
+    for item_id, wid in store_conn.execute(
+            "SELECT id, worker_id FROM review_queue WHERE status='open' AND"
+            " reason IN ('UNKNOWN_LOCATION','UNKNOWN_PROFILE')").fetchall():
+        w = next((x for x in workers if x["id"] == wid), None)
+        if w is not None and rules.missing(w["jobProfile"]["id"], w["location"]["descriptor"]) is None:
+            store_conn.execute("UPDATE review_queue SET status='resolved', resolved_at=?,"
+                               " resolution='auto: rule added' WHERE id=?",
+                               (now.strftime("%Y-%m-%dT%H:%M:%SZ"), item_id))
+            store_conn.commit()
     # A person with an open review item is left alone until a reviewer closes it.
     open_workers = {r[0] for r in store_conn.execute(
         "SELECT worker_id FROM review_queue WHERE status='open'")}

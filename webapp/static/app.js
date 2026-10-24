@@ -254,7 +254,18 @@ async function loadChanges() {
 
 // ---------- Ethena ----------
 let learners = [];
+function ethenaSub() { return location.hash.slice(1) === "ethena/courses" ? "courses" : "learners"; }
+function showEthenaSub() {
+  const sub = ethenaSub();
+  $("et-learners").hidden = sub !== "learners";
+  $("et-courses").hidden = sub !== "courses";
+  ["learners", "courses"].forEach((k) => {
+    $("et-tab-" + k).classList.toggle("active", k === sub);
+    $("et-nav-" + k).classList.toggle("on", k === sub);
+  });
+}
 async function renderEthena() {
+  showEthenaSub();
   learners = await api("api/learners");
   filterLearners();
   renderStats();
@@ -379,7 +390,44 @@ async function showLearner(l) {
 
 // ---------- Sync ----------
 async function renderSync() {
-  await Promise.all([loadState(), loadQueue(), loadDrift()]);
+  await Promise.all([loadState(), loadQueue(), loadDrift(), loadRules()]);
+}
+const opts = (list, sel, blank) => (blank ? `<option value="">${blank}</option>` : "") +
+  list.map((o) => `<option value="${esc(o.value)}"${o.value === sel ? " selected" : ""}>${esc(o.label)}</option>`).join("");
+async function loadRules() {
+  const r = await api("api/rules"), ch = r.choices;
+  const office = (o) => `<tr data-office="${esc(o.office)}"><td>${esc(o.office)}` +
+    (o.country ? "" : '<span class="tag-amber">not set: people here go to manual review</span>') + "</td>" +
+    `<td><select class="r-country" aria-label="Country for ${esc(o.office)}">${opts(ch.countries, o.country, "not set")}</select></td>` +
+    `<td><select class="r-region" aria-label="Province or state for ${esc(o.office)}"${o.country ? "" : " disabled"}>` +
+    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td></tr>`;
+  const triple = [{ value: "yes", label: "yes" }, { value: "no", label: "no" }];
+  const job = (j) => `<tr data-job="${esc(j.job)}"><td>${esc(j.label)}` +
+    (j.isManager === null ? '<span class="tag-amber">not set: people with this job go to manual review</span>' : "") + "</td>" +
+    `<td><select class="r-mgr" aria-label="Manager for ${esc(j.label)}">${opts(triple, j.isManager === null ? "" : j.isManager ? "yes" : "no", "not set")}</select></td>` +
+    `<td><select class="r-cat" aria-label="Category for ${esc(j.label)}"${j.isManager === null ? " disabled" : ""}>${opts(ch.categories, j.category || "none")}</select></td></tr>`;
+  $("sy-rules").innerHTML = '<div class="rules-grid"><div><h4>Offices</h4><table><thead><tr><th>Office</th><th>Country</th><th>Province or state</th></tr></thead><tbody>' +
+    r.offices.map(office).join("") + '</tbody></table></div><div><h4>Jobs</h4><table><thead><tr><th>Job</th><th>Manager</th><th>Category</th></tr></thead><tbody>' +
+    r.jobs.map(job).join("") + "</tbody></table></div></div>";
+  const saved = async (url, body) => {
+    await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    toast("Saved. Run sync to apply it.");
+    await Promise.all([loadRules(), loadDrift()]);
+  };
+  $("sy-rules").querySelectorAll("tr[data-office]").forEach((tr) => {
+    const country = tr.querySelector(".r-country"), region = tr.querySelector(".r-region");
+    const send = () => guard(saved)("api/rules/office", { office: tr.dataset.office,
+      country: country.value || null, region: country.value ? region.value || null : null });
+    country.addEventListener("change", () => { region.value = ""; send(); });
+    region.addEventListener("change", send);
+  });
+  $("sy-rules").querySelectorAll("tr[data-job]").forEach((tr) => {
+    const mgr = tr.querySelector(".r-mgr"), cat = tr.querySelector(".r-cat");
+    const send = () => guard(saved)("api/rules/job", { job: tr.dataset.job,
+      isManager: mgr.value === "" ? null : mgr.value === "yes", category: cat.value });
+    mgr.addEventListener("change", send);
+    cat.addEventListener("change", send);
+  });
 }
 async function loadState() {
   const s = await api("api/state");
@@ -400,7 +448,7 @@ const DRIFT_GROUPS = [
     "Run sync, then manual review."],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
     "Run sync to create the account(s)."],
-  ["needs_rule", "No training rules for their office or job yet", false, (i) => !i.in_queue && i.kind === "needs_rule",
+  ["needs_rule", "Office or job has no translation rule yet", false, (i) => !i.in_queue && i.kind === "needs_rule",
     "Run sync, then manual review."],
 ];
 async function loadDrift() {
@@ -592,7 +640,7 @@ async function renderReport() {
 
 // ---------- Routing, reset, wiring ----------
 const RENDER = { workday: renderWorkday, ethena: renderEthena, sync: renderSync, report: renderReport };
-function current() { const t = location.hash.slice(1); return RENDER[t] ? t : "workday"; }
+function current() { const t = location.hash.slice(1).split("/")[0]; return RENDER[t] ? t : "workday"; }
 function route() {
   const t = current();
   document.body.className = "t-" + t;

@@ -15,7 +15,7 @@ from hrsync.config import Settings
 from hrsync.seeding import bad_day, seed_all, summary
 from reconcile import report
 from webapp import api
-from webapp.clients import make_bundle
+from webapp.clients import make_bundle, reset_rules
 
 STATIC = Path(__file__).with_name("static")
 
@@ -76,6 +76,7 @@ def create_app(settings: Settings) -> FastAPI:
         with api.WRITE_LOCK:
             Path(settings.sync_db).unlink(missing_ok=True)
             seed_all(settings.hris_db, settings.ethena_db)
+            reset_rules(settings)
             return {"ok": True, "workers": _count(settings.hris_db, "workers"),
                     "learners": _count(settings.ethena_db, "learners"),
                     "changes": _count(settings.hris_db, "job_changes")}

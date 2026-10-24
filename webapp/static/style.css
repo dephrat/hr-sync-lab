@@ -209,3 +209,13 @@ ul.inbox .acts { display: flex; gap: 8px; }
 @media (max-width: 800px) { .theme-ethena #et-detail .cards { grid-template-columns: 1fr; } }
 .theme-workday #wd-table > p, .theme-workday #wd-changes > p { margin: 0; padding: 12px 16px; border-top: 1px solid #e6e8eb; }
 .grptodo { font-weight: 400; font-style: italic; color: #6b6b6b; margin-left: 8px; font-size: .92em; }
+
+.et-subtabs { display: flex; gap: 22px; border-bottom: 1px solid var(--et-line); margin: -6px 0 16px; }
+.et-subtabs a { padding: 8px 2px; color: var(--et-sub); text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.et-subtabs a.active { color: var(--et-red-ink); border-bottom-color: var(--et-red); font-weight: 600; }
+a.et-ico { text-decoration: none; }
+a.et-ico:hover { background: #f4f5f6; }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+.rules-grid h4 { margin: 4px 0 6px; }
+.rules-grid select { padding: 3px 6px; }
+.tag-amber { display: inline-block; margin-left: 6px; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #fff4d6; color: #8a5a00; }

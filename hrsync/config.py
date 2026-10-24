@@ -1,5 +1,6 @@
 """Runtime settings read from environment variables."""
 import os
+from pathlib import Path
 from dataclasses import dataclass
 
 
@@ -14,6 +15,11 @@ class Settings:
     rules_path: str
     web_host: str = "127.0.0.1"
     web_port: int = 8003
+
+    @property
+    def web_rules_path(self) -> str:
+        """The web app's writable rules copy, next to the sync database."""
+        return str(Path(self.sync_db).parent / "rules.json")
 
     @classmethod
     def from_env(cls) -> "Settings":

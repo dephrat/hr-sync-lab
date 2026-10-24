@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from hrsync import engine, store
+from hrsync import rules as rules_mod
+from hris.db import JOB_PROFILES, LOCATIONS, profile_descriptor
 from hrsync.engine import ATTR_KEYS
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
@@ -23,11 +25,13 @@ WORKER_ID = r"^[A-Za-z0-9-]+$"
 
 # One sentence per reason code, taken from the "What happened" column of docs/runbook.md.
 REASON_HELP: dict[str, str] = {
-    "UNKNOWN_LOCATION": "This person works at an office the sync has no training rules for yet, "
-                        "so it cannot tell which country or province courses apply. Nothing was "
+    "UNKNOWN_LOCATION": "This person works in an office that has no translation rule yet, so "
+                        "the sync does not know which country and province to give Ethena. "
+                        "Set the office under Translation rules, then run sync. Nothing was "
                         "written to Ethena.",
-    "UNKNOWN_PROFILE": "This person has a job the sync has no training rules for yet, so it "
-                       "cannot tell which courses apply. Nothing was written to Ethena.",
+    "UNKNOWN_PROFILE": "This person has a job that has no translation rule yet, so the sync "
+                       "does not know whether to mark them a manager. Set the job under "
+                       "Translation rules, then run sync. Nothing was written to Ethena.",
     "AMBIGUOUS_LEARNER": "Two or more Ethena learners share the worker's email, so the sync "
                          "cannot tell which one is the real person.",
     "NO_LEARNER_MATCH": "No Ethena learner has the worker's email, and the sync was told not to "
@@ -38,8 +42,8 @@ REASON_HELP: dict[str, str] = {
 
 
 REASON_LABEL: dict[str, str] = {
-    "UNKNOWN_LOCATION": "No training rules for this office yet",
-    "UNKNOWN_PROFILE": "No training rules for this job yet",
+    "UNKNOWN_LOCATION": "Office has no translation rule yet",
+    "UNKNOWN_PROFILE": "Job has no translation rule yet",
     "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
     "NO_LEARNER_MATCH": "No Ethena account for this person",
     "ENROLLMENT_MISSING": "An expected course did not appear",
@@ -369,6 +373,7 @@ def learners(request: Request):
 @router.get("/drift")
 def drift(request: Request):
     b = _bundle(request)
+    rules = b.rules
     rows, enr = _enrollment_map(b)
     by_id = {l["id"]: l for l in rows}
     by_email: dict[str, list[dict]] = {}
@@ -402,17 +407,18 @@ def drift(request: Request):
             sentence = f"{name}: left the company in Workday; Ethena still has them active."
         elif kind is None:
             profile, loc = w["jobProfile"]["id"], w["location"]["descriptor"]
-            attrs = b.rules.attributes_for(
+            attrs = rules.attributes_for(
                 profile, loc, w["primarySupervisoryOrganization"]["descriptor"])
             if attrs is None:
                 kind = "needs_rule"
-                if b.rules.missing(profile, loc) == "location":
-                    sentence = (f"works in {loc}, and the sync has no training rules for that "
-                                "office yet, so it will not guess which courses apply.")
+                if rules.missing(profile, loc) == "location":
+                    sentence = (f"works in the {loc} office, which has no translation rule "
+                                "yet, so the sync does not know which country and province "
+                                "to give Ethena.")
                 else:
-                    sentence = (f"is a {w['jobProfile']['descriptor']}, and the sync has no "
-                                "training rules for that job yet, so it will not guess which "
-                                "courses apply.")
+                    sentence = (f"is a {w['jobProfile']['descriptor']}, which has no translation "
+                                "rule yet, so the sync does not know whether to mark them a "
+                                "manager.")
                 sentence = f"{name} {sentence}"
             else:
                 diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
@@ -422,7 +428,7 @@ def drift(request: Request):
                                 "Ethena has not been told.")
                 else:
                     have = {e["campaignName"] for e in enr.get(learner["id"], [])}
-                    missing = sorted(b.rules.expected_campaigns(attrs) - have)
+                    missing = sorted(rules.expected_campaigns(attrs) - have)
                     if missing:
                         kind = "courses"
                         sentence = (f"{name}: should be in {', '.join(missing)} "
@@ -434,3 +440,68 @@ def drift(request: Request):
                       "sentence": sentence, "in_queue": wid in queued,
                       "open_queue": queued.get(wid, [])})
     return {"count": len(items), "items": items}
+
+
+# ---------- translation rules ----------
+
+def _rules_data(b) -> dict:
+    return json.loads(b.rules_path.read_text())
+
+
+def _valid(options) -> set:
+    return {o["value"] for o in options}
+
+
+class OfficeIn(BaseModel):
+    office: str
+    country: str | None = None
+    region: str | None = None
+
+
+class JobIn(BaseModel):
+    job: str
+    isManager: bool | None = None
+    category: str | None = None
+
+
+@router.get("/rules")
+def get_rules(request: Request):
+    data = _rules_data(_bundle(request))
+    return {"offices": [rules_mod.office_row(data, o) for o in LOCATIONS],
+            "jobs": [rules_mod.job_row(data, j, profile_descriptor(j)) for j in JOB_PROFILES],
+            "choices": rules_mod.CHOICES}
+
+
+@router.put("/rules/office")
+def put_office(body: OfficeIn, request: Request):
+    ch = rules_mod.CHOICES
+    if body.office not in LOCATIONS:
+        return _err(422, f"unknown office {body.office!r}")
+    country, region = body.country, body.region
+    if country is not None and country not in _valid(ch["countries"]):
+        return _err(422, f"unknown country {country!r}")
+    if country is None:
+        region = None
+    elif region is not None and region not in _valid(ch["regions"][country]):
+        return _err(422, f"region {region!r} does not belong to country {country}")
+    b = _bundle(request)
+    with WRITE_LOCK:
+        data = _rules_data(b)
+        rules_mod.set_office(data, body.office, country, region)
+        rules_mod.save(b.rules_path, data)
+    return rules_mod.office_row(data, body.office)
+
+
+@router.put("/rules/job")
+def put_job(body: JobIn, request: Request):
+    if body.job not in JOB_PROFILES:
+        return _err(422, f"unknown job {body.job!r}")
+    cat = None if body.category in (None, "none") else body.category
+    if cat is not None and cat not in _valid(rules_mod.CHOICES["categories"]):
+        return _err(422, f"unknown category {cat!r}")
+    b = _bundle(request)
+    with WRITE_LOCK:
+        data = _rules_data(b)
+        rules_mod.set_job(data, body.job, body.isManager, cat)
+        rules_mod.save(b.rules_path, data)
+    return rules_mod.job_row(data, body.job, profile_descriptor(body.job))

@@ -66,6 +66,9 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">People the sync would not decide about on its own. Resolve picks the right Ethena account and re-runs; Skip closes the item without touching Ethena.
       <label class="inline"><input type="checkbox" id="sy-all"> include closed items</label></p>
     <div id="sy-queue"></div>
+    <h3>Translation rules</h3>
+    <p class="muted">How Workday's offices and jobs translate into what Ethena understands. This is the knowledge someone used to carry in their head; the sync applies it on every run.</p>
+    <div id="sy-rules"></div>
     <h3>Look up a person</h3>
     <p class="muted">See one person in both systems, everything the sync did to them, and why they are or are not in a course.</p>
     <input id="sy-q" class="search" placeholder="Search workers by name, id, email, job profile or location">
@@ -74,14 +77,19 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   </section>
   <section id="tab-ethena" class="panel theme-ethena" data-accent="ethena">
     <div class="et-app">
-      <div class="et-rail" aria-hidden="true">
+      <div class="et-rail">
         <span class="et-mark">e</span>
-        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9l7-6 7 6v8H3z"/></svg></span>
-        <span class="et-ico on"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5"/></svg></span>
-        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4h6a2 2 0 012 2v11a2 2 0 00-2-2H3zM11 6a2 2 0 012-2h4v11h-4a2 2 0 00-2 2"/></svg></span>
-        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V9M10 16V4M16 16v-5"/></svg></span>
+        <span class="et-ico" title="Home" aria-label="Home" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9l7-6 7 6v8H3z"/></svg></span>
+        <a href="#ethena" class="et-ico on" id="et-nav-learners" title="Learners" aria-label="Learners"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5"/></svg></a>
+        <a href="#ethena/courses" class="et-ico" id="et-nav-courses" title="Courses" aria-label="Courses"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4h6a2 2 0 012 2v11a2 2 0 00-2-2H3zM11 6a2 2 0 012-2h4v11h-4a2 2 0 00-2 2"/></svg></a>
+        <span class="et-ico" title="Reports" aria-label="Reports" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V9M10 16V4M16 16v-5"/></svg></span>
       </div>
       <div class="et-main">
+        <nav class="et-subtabs" aria-label="Ethena sections">
+          <a href="#ethena" id="et-tab-learners" data-sub="learners">Learners</a>
+          <a href="#ethena/courses" id="et-tab-courses" data-sub="courses">Courses</a>
+        </nav>
+        <div id="et-learners">
         <div class="pbar et-head">
           <div class="et-hi"><h2>Learners <span class="mockchip">mock</span></h2>
             <p class="muted">Ethena owns training. People-facts arrive from Workday through the sync.</p></div>
@@ -90,9 +98,12 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
         <div id="et-stats" class="et-stats"></div>
         <div id="et-detail"></div>
         <div id="et-table"></div>
-        <h3>Courses and who gets them</h3>
+        </div>
+        <div id="et-courses" hidden>
+        <h2>Courses <span class="mockchip">mock</span></h2>
         <p class="muted">Who gets each course, decided by attributes.</p>
         <div id="et-campaigns"></div>
+        </div>
       </div>
     </div>
   </section>

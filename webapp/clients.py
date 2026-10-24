@@ -1,4 +1,5 @@
 """Wires the sync engine to the two mock systems inside one process."""
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from hris.app import create_app as create_hris
 from hrsync import engine
 from hrsync.clients import EthenaClient, WorkdayClient
 from hrsync.config import Settings
-from hrsync.rules import Rules, load as load_rules
+from hrsync.rules import Rules, load as load_rules, save as rules_save
 
 
 @dataclass
@@ -27,7 +28,16 @@ class Bundle:
     ethena_app: FastAPI
     hris: WorkdayClient
     learning: EthenaClient
-    rules: Rules
+    rules_path: Path
+
+    @property
+    def rules(self) -> Rules:
+        """Re-read from disk when the file changes, so edits and resets apply at once."""
+        st = self.rules_path.stat()
+        key = (st.st_mtime_ns, st.st_ino, st.st_size)
+        if getattr(self, "_rules_key", None) != key:
+            self._rules, self._rules_key = load_rules(self.rules_path), key
+        return self._rules
 
 
 def make_bundle(settings: Settings) -> Bundle:
@@ -36,11 +46,16 @@ def make_bundle(settings: Settings) -> Bundle:
     hc = TestClient(hris_app)
     ec = TestClient(ethena_app)
     ec.auth = ("web", settings.ethena_api_key)
-    rules_path = Path(settings.rules_path)
-    # Fall back to the packaged file only for the default setting; a custom path that is
-    # missing should fail loudly in load_rules.
-    default = Path(engine.__file__).parent / "rules.default.json"
-    if settings.rules_path == "hrsync/rules.default.json" and not rules_path.exists():
-        rules_path = default
+    rules_path = Path(settings.web_rules_path)
+    if not rules_path.exists():
+        reset_rules(settings)
     return Bundle(settings, hris_app, ethena_app, WorkdayClient(hc), EthenaClient(ec),
-                  load_rules(rules_path))
+                  rules_path)
+
+
+def reset_rules(settings: Settings) -> None:
+    """Copy the packaged rules over the web app's writable copy."""
+    default = Path(engine.__file__).parent / "rules.default.json"
+    dest = Path(settings.web_rules_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    rules_save(dest, json.loads(default.read_text()))

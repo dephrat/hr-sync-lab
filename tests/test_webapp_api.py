@@ -246,3 +246,73 @@ def test_clean_seed_has_no_drift(tmp_path):
     assert secs["overdue_by_department"]["rows"] == []
     assert secs["terminated_but_active"]["rows"] == []
     assert c.get("/workday/jobChanges", params={"limit": 100}).json()["data"] == []
+
+
+# ---------- translation rules ----------
+
+def test_get_rules_covers_everything(client):
+    from hris.db import JOB_PROFILES, LOCATIONS
+    r = client.get("/api/rules").json()
+    assert [o["office"] for o in r["offices"]] == LOCATIONS
+    assert [j["job"] for j in r["jobs"]] == JOB_PROFILES
+    by = {o["office"]: o for o in r["offices"]}
+    assert by["Toronto, ON"] == {"office": "Toronto, ON", "country": "CAN", "region": "ON"}
+    assert by["Austin, TX"]["region"] == "TX" and by["Vancouver, BC"]["country"] is None
+    jobs = {j["job"]: j for j in r["jobs"]}
+    assert jobs["Warehouse_Supervisor"]["isManager"] is True
+    assert jobs["Warehouse_Supervisor"]["category"] == "WAREHOUSE"
+    assert jobs["Sales_Rep"]["category"] is None and jobs["Sales_Rep"]["label"] == "Sales Rep"
+    assert {c["value"] for c in r["choices"]["regions"]["CAN"]} == {"ON", "BC", "AB", "QC"}
+
+
+def test_put_rules_validation(client):
+    put = lambda path, body: client.put("/api/rules/" + path, json=body)
+    r = put("office", {"office": "Vancouver, BC", "country": "CAN", "region": "TX"})
+    assert r.status_code == 422 and "error" in r.json()
+    assert put("office", {"office": "Atlantis", "country": "CAN", "region": "ON"}).status_code == 422
+    assert put("office", {"office": "Vancouver, BC", "country": "FRA"}).status_code == 422
+    assert put("job", {"job": "Nope", "isManager": True}).status_code == 422
+    assert put("job", {"job": "Sales_Rep", "isManager": True, "category": "x"}).status_code == 422
+    ok = put("office", {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}).json()
+    assert ok == {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}
+    cleared = put("office", {"office": "Vancouver, BC", "country": None, "region": "BC"}).json()
+    assert cleared["country"] is None and cleared["region"] is None
+    job = put("job", {"job": "Sales_Rep", "isManager": True, "category": "WAREHOUSE"}).json()
+    assert job["isManager"] is True and job["category"] == "WAREHOUSE"
+
+
+def test_rules_persist_and_reset_restores(settings, client):
+    client.put("/api/rules/office", json={"office": "Vancouver, BC", "country": "CAN", "region": "BC"})
+    client.put("/api/rules/office", json={"office": "Austin, TX", "country": None})
+    again = TestClient(create_app(settings))
+    by = {o["office"]: o for o in again.get("/api/rules").json()["offices"]}
+    assert by["Vancouver, BC"]["region"] == "BC" and by["Austin, TX"]["country"] is None
+    again.post("/api/reset")
+    by = {o["office"]: o for o in again.get("/api/rules").json()["offices"]}
+    assert by["Vancouver, BC"]["country"] is None and by["Austin, TX"]["region"] == "TX"
+
+
+def test_needs_rule_sentence_points_at_translation_rules(client):
+    items = client.get("/api/drift").json()["items"]
+    s = [i["sentence"] for i in items if i["kind"] == "needs_rule"]
+    assert s and all("which has no translation rule yet" in x for x in s)
+
+
+def test_adding_vancouver_rule_clears_manual_review(client):
+    client.post("/api/run")
+    vq = [i for i in client.get("/api/queue").json() if i["reason"] == "UNKNOWN_LOCATION"]
+    assert len(vq) == 3
+    client.put("/api/rules/office", json={"office": "Vancouver, BC", "country": "CAN", "region": "BC"})
+    client.post("/api/run")
+    still = [i for i in client.get("/api/queue").json() if i["reason"] == "UNKNOWN_LOCATION"]
+    assert still == []
+    all_items = client.get("/api/queue?all=1").json()
+    closed = [i for i in all_items if i["reason"] == "UNKNOWN_LOCATION"]
+    assert len(closed) == 3 and all(i["resolution"] == "auto: rule added" for i in closed)
+    for i in closed:
+        w = client.get(f"/api/workers/{i['worker_id']}").json()
+        lrn = w.get("learner") or {}
+        assert lrn.get("customCategory") == "BC" and lrn.get("country") == "CAN"
+    items = client.get("/api/drift").json()["items"]
+    assert not [i for i in items if i["kind"] == "needs_rule"]
+    assert not [i for i in items if i["worker_id"] in {c["worker_id"] for c in closed}]

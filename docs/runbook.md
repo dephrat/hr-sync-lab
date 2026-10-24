@@ -84,6 +84,8 @@ The Ethena key is read from `ETHENA_API_KEY` at the start of each run. To rotate
 
 ## Adding a location or a job profile to the rules table
 
+On the web page, the Sync tab has a Translation rules section with one dropdown row per Workday office and per job. Changing a dropdown saves at once to `rules.json` next to the sync database (Reset demo copies the packaged file back over it); run sync afterwards. When a rule is added for an office or job that has open UNKNOWN_LOCATION or UNKNOWN_PROFILE review items, the next run closes those items with the resolution `auto: rule added` and syncs the people. The command line and cron job keep reading `hrsync/rules.default.json` (or `RULES_PATH`), so for them edit the file as described here.
+
 Edit `hrsync/rules.default.json` (or the file `RULES_PATH` points at). The location key must match the Workday location descriptor exactly, and the profile key must match the Workday job profile id.
 
 ```json

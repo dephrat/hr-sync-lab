@@ -54,6 +54,7 @@ The page opens clean: Workday and Ethena agree on all 100 people, and the out-of
 2. Read the out-of-sync panel: 13 people, each with one plain sentence (5 attribute changes, 3 people with a location not in the rules table, 3 with no Ethena account, 1 leaver still active, 1 shared email).
 3. Press Run sync. It fixes 9 of them and leaves 4 for manual review; the panel drops to those 4.
 4. Work the queue (map the duplicate to the right learner, or skip a Vancouver item with a note), then read the Report tab.
+5. Or fix the cause: in Translation rules on the Sync tab, set the Vancouver office to Canada and British Columbia, run sync again, and the manual-review items for Vancouver clear on their own.
 
 A second story shows one change end to end:
 
