@@ -57,7 +57,10 @@ def explain_gap(hris, learning, store_conn, rules, worker_id: str, campaign_name
     if item:
         change_id, reason, detail = item
         if change_id.startswith(engine.RECON_PREFIX):
-            name = hris.get_worker(worker_id)["descriptor"]
+            try:
+                name = hris.get_worker(worker_id)["descriptor"]
+            except HrSyncClientError:
+                name = worker_id
             return (f"A reconcile check queued {name} ({reason}: {detail!r}); no attributes "
                     f"were written, so Ethena never enrolled this learner in {campaign_name!r}.")
         when = ""

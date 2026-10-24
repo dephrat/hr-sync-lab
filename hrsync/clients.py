@@ -68,7 +68,10 @@ class WorkdayClient:
         return _send(self.http, "GET", f"/jobChanges/{change_id}").json()
 
     def pending_changes(self, worker_id: str) -> list[dict]:
-        """Job changes still waiting for approval for one worker."""
+        """Job changes still waiting for approval for one worker.
+
+        Reads the first 100 pending changes only: plenty for the demo, a real
+        tenant would page."""
         body = _send(self.http, "GET", "/jobChanges",
                      params={"status": "pending", "limit": 100}).json()
         return [c for c in body["data"] if c["worker"]["id"] == worker_id]
