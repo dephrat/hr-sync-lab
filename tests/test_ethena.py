@@ -44,7 +44,7 @@ def test_requires_basic_auth(client):
 def test_learners_cursor_pagination(client):
     learners = all_learners(client)
     ids = [x["id"] for x in learners]
-    assert len(ids) == len(set(ids)) == 100 - 6 + 1
+    assert len(ids) == len(set(ids)) == 100 - 3 + 1
     assert learners[0]["id"].startswith("L") and ids[0].isalnum()
 
 

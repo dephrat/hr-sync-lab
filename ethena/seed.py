@@ -4,10 +4,8 @@ Run it after hris.seed.seed_workers and before hris.seed.apply_changes (hrsync.s
 this), so learners carry each worker's pre-change attributes and the first sync has work to do.
 
 Mismatches (all deterministic for a given HRIS seed):
-- 6 HRIS workers with no planned job change are absent from Ethena.
+- 3 HRIS workers with no planned job change are absent from Ethena.
 - W-1042's email is on two learners (its own plus an extra learner "Emma Parker-Dup").
-- 3 learners have country flipped CAN<->USA vs their HRIS location: the worker of the planned
-  change marked flip_country plus 2 workers with no change.
 - The HRIS Termination worker's learner is still ACTIVE.
 - 2 enrollments of unchanged learners are past their deadline and not completed (overdue).
 """
@@ -51,15 +49,15 @@ def seed(conn, hris_conn, plans=None, rng_seed=7) -> dict:
 
     workers = hris_conn.execute("SELECT * FROM workers ORDER BY id").fetchall()
     if plans is None:
-        plans = [{"worker_id": r[0], "reason": r[1], "flip_country": False} for r in
+        plans = [{"worker_id": r[0], "reason": r[1], } for r in
                  hris_conn.execute("SELECT worker_id, reason FROM job_changes ORDER BY seq")]
     changed = {p["worker_id"] for p in plans}
     terminated = sorted(p["worker_id"] for p in plans if p["reason"] == "Termination")
     plain = [w["id"] for w in workers if w["id"] not in changed and w["id"] != DUP_WORKER]
-    absent = sorted(rng.sample(plain, 6))
-    forced = [p["worker_id"] for p in plans if p.get("flip_country")]
-    flipped = sorted([*forced, *rng.sample([i for i in plain if i not in absent],
-                                           3 - len(forced))])
+    # Vancouver workers queue anyway, so keep the three absent ones clear of them.
+    can_create = [w["id"] for w in workers if w["id"] in plain and w["location"] != "Vancouver, BC"]
+    absent = sorted(rng.sample(can_create, 3))
+    flipped: list[str] = []  # the country mismatch was retired; the key stays for callers
 
     learners = {}
     for i, w in enumerate(w for w in workers if w["id"] not in absent):

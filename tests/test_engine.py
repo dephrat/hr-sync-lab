@@ -262,13 +262,11 @@ def test_first_run_patches_the_promotion(env):
     assert {"Manager Fundamentals", "Harassment Prevention (Ontario)"} <= names
 
 
-def test_first_run_fixes_flipped_country(env):
-    plan = next(p for p in env["facts"]["plans"] if p["flip_country"])
-    run(env)
-    detail = env["db"].execute(
-        "SELECT detail FROM audit WHERE worker_id=? AND action='patch_learner' AND outcome='ok'",
-        (plan["worker_id"],)).fetchone()[0]
-    assert "country" in json.loads(detail)
+def test_seed_plants_no_country_mismatch_and_two_vancouver_workers(env):
+    assert env["facts"]["country_mismatch_workers"] == []
+    assert len(env["facts"]["absent_workers"]) == 3
+    van = [w for w in env["hris"].list_workers() if w["location"]["descriptor"] == "Vancouver, BC"]
+    assert len(van) == 3  # two at seed time plus the planned Transfer
 
 
 def test_summary_buckets_sum_to_changes_seen(env):

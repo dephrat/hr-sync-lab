@@ -162,7 +162,7 @@ def test_bad_worker_id_is_422(client):
 
 def test_learners_have_enrollments(client):
     rows = client.get("/api/learners").json()
-    assert len(rows) == 95
+    assert len(rows) == 98
     assert all(isinstance(r["enrollments"], list) for r in rows)
     assert any(r["enrollments"] for r in rows)
     assert {"campaignName", "completionStatus", "deadline"} <= set(

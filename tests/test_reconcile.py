@@ -20,13 +20,13 @@ SECTIONS = ["Overdue training by department", "In HRIS, not in Ethena",
 
 @pytest.fixture
 def env(tmp_path):
-    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
     hc = TestClient(create_hris(tmp_path / "hris.db"))
     ec = TestClient(create_app(tmp_path / "ethena.db"))
     ec.auth = ("anyone", "test-key")
     r = rules.load(Path(engine.__file__).parent / "rules.default.json")
     db = store.connect(tmp_path / "sync.db")
-    return {"hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "rules": r,
+    facts = seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    return {"facts": facts, "hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "rules": r,
             "db": db, "paths": (tmp_path / "hris.db", tmp_path / "ethena.db",
                                 tmp_path / "sync.db")}
 
@@ -47,19 +47,19 @@ def test_seeded_drift_before_sync(env):
     for title in SECTIONS:
         assert f"## {title}\n" in md
     assert count(md, "Terminated in HRIS but active in Ethena") == 1
-    assert count(md, "In HRIS, not in Ethena") == 6
+    assert count(md, "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"])
 
 
 def test_after_sync(env):
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
     md = build(env)
     assert count(md, "Terminated in HRIS but active in Ethena") == 0
-    assert count(md, "In HRIS, not in Ethena") == 6
+    assert count(md, "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"])
     env["hc"].post("/jobChanges", json={
-        "workerId": "W-1008", "effectiveDate": "2026-10-22", "reason": "Data_Change",
+        "workerId": env["facts"]["absent_workers"][0], "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Senior Specialist"})
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
-    assert count(build(env), "In HRIS, not in Ethena") == 5
+    assert count(build(env), "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"]) - 1
 
 
 def test_sections_shape(env):

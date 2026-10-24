@@ -63,7 +63,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 ```
 uv sync
-uv run hrsync seed      # 100 workers, 95 learners, 12 job changes, in data/
+uv run hrsync seed      # 100 workers, 98 learners, 12 job changes, in data/
 uv run hrsync serve     # leave running: Workday mock on :8001, Ethena mock on :8002
 ```
 
@@ -72,8 +72,8 @@ In a second terminal:
 ```
 uv run hrsync report                    # before the first run: one terminated-but-active row
 uv run hrsync run                       # changes_seen 100 (12 job changes + 88 other workers),
-                                        #   patched 7, created 5, terminated 1, queued 14, ok 73
-uv run hrsync queue                     # two UNKNOWN_LOCATION (Vancouver, BC), one AMBIGUOUS_LEARNER (W-1042)
+                                        #   patched 5, created 3, terminated 1, queued 4, ok 87
+uv run hrsync queue                     # three UNKNOWN_LOCATION (Vancouver, BC), one AMBIGUOUS_LEARNER (W-1042)
 uv run hrsync resolve 1 --skip --note "location not in rules yet"
 uv run hrsync report                    # drift report, also written to data/report.md
 ```
@@ -82,7 +82,7 @@ Run `hrsync report` before and after the first `run` to see the terminated-but-a
 
 `resolve <id> --map-learner <learner id>` is the other way to close an item: it saves the mapping and reprocesses that change. `run` exits 1 if any step failed; `resolve` exits 2 if the item is missing or closed, the learner is unknown, or a mock is unreachable, and exits 1 if the mapping was saved but the rerun change ended up queued or failed. Both print `cannot reach ...` instead of a traceback when `serve` is not running.
 
-The seed plants problems on purpose: `Vancouver, BC` is not in the rules table, worker `W-1042`'s email is on two learners and that worker has a seeded change, 6 workers are missing from Ethena, 3 learners have the wrong country (one of them has a seeded change, so the first run patches its `country`), 2 enrollments are overdue, and one terminated worker is still active in Ethena until the first run. Ethena is seeded from the workers as they were before the 12 job changes, so the first run has real drift to fix.
+The seed plants problems on purpose: `Vancouver, BC` is not in the rules table (three people are there: two from the start and one transferred in), worker `W-1042`'s email is on two learners and that worker has a seeded change, 3 workers are missing from Ethena (the first run creates them), 2 enrollments are overdue, and one terminated worker is still active in Ethena until the first run. Ethena is seeded from the workers as they were before the 12 job changes, so the first run has real drift to fix.
 
 ## Use from Claude Desktop
 

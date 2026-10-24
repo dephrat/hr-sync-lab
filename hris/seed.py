@@ -15,6 +15,14 @@ LAST_NAMES = ["Tremblay", "Nguyen", "Okafor", "Silva", "Kowalski", "Haddad", "Pa
 
 PROMOTED_PROFILE = "Sales_Team_Lead"
 DUP_WORKER = "W-1042"  # ethena.seed puts this worker's email on two learners
+VANCOUVER = "Vancouver, BC"  # not in the rules table; exactly N_VANCOUVER workers start there
+N_VANCOUVER = 2
+
+
+def _location(rng, loc_rng, others):
+    """The main stream draws as before; a Vancouver draw is swapped for another location."""
+    loc = rng.choice(LOCATIONS)
+    return loc if loc != VANCOUVER else loc_rng.choice(others)
 
 
 def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
@@ -22,6 +30,8 @@ def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
     (apply them with apply_changes). Callers that need the pre-change state (ethena.seed)
     run between the two calls."""
     rng = random.Random(rng_seed)
+    loc_rng = random.Random(rng_seed + 1000)  # side stream, so the main draws stay put
+    others = [loc for loc in LOCATIONS if loc != VANCOUVER]
     now = datetime.now(timezone.utc).replace(microsecond=0)
     for i in range(n_workers):
         wid = f"W-{1001 + i}"
@@ -34,43 +44,42 @@ def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
             " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (wid, f"{first} {last}", f"{first}.{last}.{1001 + i}@example.com".lower(),
              profile_descriptor(profile), int(is_manager_profile(profile)), hire, profile,
-             rng.choice(LOCATIONS), PROFILE_DEPARTMENT[profile], f"P-{1001 + i}", hire))
+             _location(rng, loc_rng, others), PROFILE_DEPARTMENT[profile], f"P-{1001 + i}", hire))
     conn.commit()
 
     workers = conn.execute("SELECT id, job_profile, location FROM workers ORDER BY id").fetchall()
     # The promotion is the README's story: a Toronto Sales_Rep becomes a Sales_Team_Lead.
     promoted = next(w["id"] for w in workers if w["id"] != DUP_WORKER
                     and w["job_profile"] == "Sales_Rep" and w["location"] == "Toronto, ON")
-    # The country check: a non-Vancouver worker whose Ethena learner gets the wrong country.
     pool = [w["id"] for w in workers if w["id"] not in (DUP_WORKER, promoted)]
     ids = rng.sample(pool, 10)
-    country_check = next(w for w in ids if conn.execute(
-        "SELECT location FROM workers WHERE id=?", (w,)).fetchone()[0] != "Vancouver, BC")
-    ids.remove(country_check)
+    # Exactly two workers start in Vancouver, none of them with a planned change.
+    quiet = [w["id"] for w in workers if w["id"] not in (DUP_WORKER, promoted, *ids)]
+    for wid in sorted(loc_rng.sample(quiet, N_VANCOUVER)):
+        conn.execute("UPDATE workers SET location=? WHERE id=?", (VANCOUVER, wid))
+    conn.commit()
     plans = [
         (ids[0], "Hire", {}),
         (promoted, "Promotion", {"job_profile": PROMOTED_PROFILE}),
         (ids[1], "Transfer", {"location": "Vancouver, BC"}),
         (ids[2], "Termination", {}),
         (DUP_WORKER, "Data_Change", {"business_title": "Senior Associate"}),
-        (country_check, "Data_Change", {"business_title": "Senior Specialist", "_flip": True}),
     ]
-    for wid in ids[3:9]:
+    for wid in ids[3:10]:
         reason = rng.choice(["Promotion", "Transfer", "Data_Change"])
         if reason == "Promotion":
             plans.append((wid, reason, {"job_profile": rng.choice(JOB_PROFILES)}))
         elif reason == "Transfer":
-            plans.append((wid, reason, {"location": rng.choice(LOCATIONS)}))
+            plans.append((wid, reason, {"location": rng.choice(others)}))
         else:
             plans.append((wid, reason, {"business_title": f"Senior {rng.choice(['Associate', 'Specialist'])}"}))
     out = []
     for i, (wid, reason, fields) in enumerate(plans):
         completed = now - timedelta(days=29 - i * 2.4)
-        flip = fields.pop("_flip", False)
         if "job_profile" in fields:
             fields["department"] = PROFILE_DEPARTMENT[fields["job_profile"]]
         out.append({"worker_id": wid, "reason": reason, "fields": fields,
-                    "completed": completed, "flip_country": flip})
+                    "completed": completed})
     return out
 
 

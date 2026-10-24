@@ -1,7 +1,7 @@
 """The one place that knows the two-system seed order.
 
 Ethena is seeded from the workers' pre-change state, then the HRIS job changes are applied.
-That way the first sync finds real drift (the promotion, the flipped country) to fix.
+That way the first sync finds real drift (the promotion, the terminated worker) to fix.
 """
 from pathlib import Path
 
