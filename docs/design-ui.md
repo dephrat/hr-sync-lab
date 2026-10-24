@@ -8,7 +8,7 @@ Someone in HR who will not install anything and may not have Claude. They open a
 
 ## Layout
 
-One page, four tabs across the top, each a plain text link that swaps the panel (the same weight as Production Line Builder's tabs). A top bar with the title, a one-line hint ("Try: promote someone in Workday, check Ethena, then Run sync"), a visible "mock systems, fake data" label, and a **Reset demo** button that reseeds all three databases.
+One page, four tabs across the top, each a plain text link that swaps the panel (the same weight as Production Line Builder's tabs). A top bar with the title, a one-line hint ("Try: promote someone in Workday, check Ethena, then Run sync"), a visible "mock systems, fake data" label, and a **Reset demo** button that reseeds all three databases to the clean state, where Workday and Ethena match.
 
 ### Workday tab (mock HRIS)
 - Worker table with a search box (id, name, job profile, location, department, manager, status).
@@ -23,6 +23,7 @@ One page, four tabs across the top, each a plain text link that swaps the panel 
 
 ### Sync tab
 - Status strip: last run time, watermark, open queue count, failed steps in the last run.
+- **Demo a bad day** button (amber, next to Run sync): calls `POST /api/bad_day`, which injects the messy Monday into the clean seed (12 job changes Ethena has not heard about, a duplicate account, 3 missing people, 2 overdue enrollments) and refreshes the drift panel. A second press says the bad day is already here and points to Reset demo.
 - **Run sync** button: runs `engine.run`, then shows the summary counts and a per-change list in English built from that run's audit rows: who, what change, what was written, which campaigns were verified, or why it was queued. A second run shows "1 seen, 1 skipped" with a note that this is the safe-to-rerun proof.
 - **Review queue** table: id, reason, person, detail, age, with a one-line explanation per reason code. Row actions: **Map to learner** (dropdown of candidates: for `AMBIGUOUS_LEARNER` the ids in the detail; otherwise learners matching the worker's email, and a free-text fallback) with Resolve, and **Skip** with a note. For `UNKNOWN_LOCATION` / `UNKNOWN_PROFILE` the row says the rules table needs the value and names the owner. A "show closed" toggle.
 - **Look up a person**: search workers; shows Workday record, mapped learner (or "no learner" / "two candidates"), enrollments, and the audit trail newest first.

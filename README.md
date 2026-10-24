@@ -48,7 +48,14 @@ One `hrsync run` (add `--changes-only` to skip the final step on a large tenant)
 
 `webapp/` is a single page that shows the whole story without a terminal. Run it locally with `uv run hrsync seed && uv run hrsync web`, then open http://127.0.0.1:8003/. The page runs behind a secret path on a private host; deploy/README.md has the procedure.
 
-The story takes six clicks:
+The page opens clean: Workday and Ethena agree on all 100 people, and the out-of-sync panel on the Sync tab is empty. The main story:
+
+1. In the Sync tab, press **Demo a bad day**. It injects a messy Monday: 12 job changes Ethena has not heard about, a duplicate Ethena account, 3 people missing from Ethena, and 2 overdue enrollments.
+2. Read the out-of-sync panel: 13 people, each with one plain sentence (5 attribute changes, 3 people with a location not in the rules table, 3 with no Ethena account, 1 leaver still active, 1 shared email).
+3. Press Run sync. It fixes 9 of them and leaves 4 in the review queue for a person; the panel drops to those 4.
+4. Work the queue (map the duplicate to the right learner, or skip a Vancouver item with a note), then read the Report tab.
+
+A second story shows one change end to end:
 
 1. Open Workday (mock), search for Lucas Fischer (W-1014, a Toronto software engineer), and submit a Promotion to Engineering Manager. Like real Workday, the change waits for approval: press Approve in the Approvals box above the search. Only then does the worker record change.
 2. In the Ethena tab, check that his learner shows manager = no and has no Manager Fundamentals.
@@ -59,7 +66,7 @@ The story takes six clicks:
 
 You can also hire someone in Workday (a hire completes in one step, no approval) and take a course in Ethena: open a learner, press Take course on an unfinished enrollment, read the short lesson and answer the question correctly to complete it. Both show the sync leaving each system's own data alone. Deny in the Approvals box discards a submitted change without touching the worker.
 
-Reset demo puts all three databases back to the seed.
+Reset demo puts all three databases back to the clean seed. Demo a bad day only works once per reset; pressing it again says so.
 
 ## Quickstart
 
@@ -67,14 +74,15 @@ Needs [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 ```
 uv sync
-uv run hrsync seed      # 100 workers, 98 learners, 12 job changes, in data/
+uv run hrsync seed      # clean: 100 workers, 100 matching learners, in data/
+uv run hrsync bad-day   # the messy Monday: 12 job changes, 1 duplicate, 3 missing, 2 overdue
 uv run hrsync serve     # leave running: Workday mock on :8001, Ethena mock on :8002
 ```
 
 In a second terminal:
 
 ```
-uv run hrsync report                    # before the first run: one terminated-but-active row
+uv run hrsync report                    # after bad-day, before the first run: one terminated-but-active row
 uv run hrsync run                       # changes_seen 100 (12 job changes + 88 other workers),
                                         #   patched 5, created 3, terminated 1, queued 4, ok 87
 uv run hrsync queue                     # three UNKNOWN_LOCATION (Vancouver, BC), one AMBIGUOUS_LEARNER (W-1042)
@@ -82,11 +90,11 @@ uv run hrsync resolve 1 --skip --note "location not in rules yet"
 uv run hrsync report                    # drift report, also written to data/report.md
 ```
 
-Run `hrsync report` before and after the first `run` to see the terminated-but-active row disappear. The first run's patches include the seed's version of Priya: Chloe Chen (`W-1038`), a Toronto `Sales_Rep` promoted to `Sales_Team_Lead`, whose learner gets `isManager` true and is then enrolled in Manager Fundamentals next to Harassment Prevention (Ontario). Each change lands in exactly one summary bucket, so the seven counts add up to `changes_seen`.
+Run `hrsync report` before and after the first `run` to see the terminated-but-active row disappear. The first run's patches include the bad day's version of Priya: Chloe Chen (`W-1038`), a Toronto `Sales_Rep` promoted to `Sales_Team_Lead`, whose learner gets `isManager` true and is then enrolled in Manager Fundamentals next to Harassment Prevention (Ontario). Each change lands in exactly one summary bucket, so the seven counts add up to `changes_seen`.
 
 `resolve <id> --map-learner <learner id>` is the other way to close an item: it saves the mapping and reprocesses that change. `run` exits 1 if any step failed; `resolve` exits 2 if the item is missing or closed, the learner is unknown, or a mock is unreachable, and exits 1 if the mapping was saved but the rerun change ended up queued or failed. Both print `cannot reach ...` instead of a traceback when `serve` is not running.
 
-The seed plants problems on purpose: `Vancouver, BC` is not in the rules table (three people are there: two from the start and one transferred in), worker `W-1042`'s email is on two learners and that worker has a seeded change, 3 workers are missing from Ethena (the first run creates them), 2 enrollments are overdue, and one terminated worker is still active in Ethena until the first run. Ethena is seeded from the workers as they were before the 12 job changes, so the first run has real drift to fix.
+`hrsync seed` leaves the two systems matching. The bad day (`hrsync bad-day` or the Demo a bad day button) plants the problems: three people end up in `Vancouver, BC`, which is not in the rules table (two move there quietly and one by a transfer), worker `W-1042`'s email goes on a second learner and that worker gets a change, 3 workers lose their Ethena learner (the first run creates them), 2 enrollments go past their deadline, and one worker terminated in the HRIS stays active in Ethena until the first run. The 12 job changes land only in the HRIS, so the first run has real drift to fix. The bad day never touches the sync database.
 
 ## Use from Claude Desktop
 

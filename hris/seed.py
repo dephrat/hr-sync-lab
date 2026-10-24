@@ -15,8 +15,8 @@ LAST_NAMES = ["Tremblay", "Nguyen", "Okafor", "Silva", "Kowalski", "Haddad", "Pa
 
 PROMOTED_PROFILE = "Sales_Team_Lead"
 DUP_WORKER = "W-1042"  # ethena.seed puts this worker's email on two learners
-VANCOUVER = "Vancouver, BC"  # not in the rules table; exactly N_VANCOUVER workers start there
-N_VANCOUVER = 2
+VANCOUVER = "Vancouver, BC"  # not in the rules table; nobody starts there
+N_VANCOUVER = 2  # quiet movers on the bad day, besides the Transfer
 
 
 def _location(rng, loc_rng, others):
@@ -25,43 +25,35 @@ def _location(rng, loc_rng, others):
     return loc if loc != VANCOUVER else loc_rng.choice(others)
 
 
-def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
-    """Insert the workers in their pre-change state and return the 12 planned job changes
-    (apply them with apply_changes). Callers that need the pre-change state (ethena.seed)
-    run between the two calls."""
+def _generate(n_workers=100, rng_seed=7):
+    """Draw the workers, the 12 planned job changes and the quiet Vancouver movers.
+    Pure and deterministic, so the clean seed and the bad day agree on every pick."""
     rng = random.Random(rng_seed)
     loc_rng = random.Random(rng_seed + 1000)  # side stream, so the main draws stay put
     others = [loc for loc in LOCATIONS if loc != VANCOUVER]
     now = datetime.now(timezone.utc).replace(microsecond=0)
+    rows = []
     for i in range(n_workers):
         wid = f"W-{1001 + i}"
         first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
         profile = rng.choice(JOB_PROFILES)
         hire = (now - timedelta(days=rng.randint(60, 2500))).date().isoformat()
-        conn.execute(
-            "INSERT INTO workers (id, descriptor, email, business_title, is_manager,"
-            " hire_date, job_profile, location, department, position_id, status_date)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (wid, f"{first} {last}", f"{first}.{last}.{1001 + i}@example.com".lower(),
-             profile_descriptor(profile), int(is_manager_profile(profile)), hire, profile,
-             _location(rng, loc_rng, others), PROFILE_DEPARTMENT[profile], f"P-{1001 + i}", hire))
-    conn.commit()
-
-    workers = conn.execute("SELECT id, job_profile, location FROM workers ORDER BY id").fetchall()
+        rows.append((wid, f"{first} {last}", f"{first}.{last}.{1001 + i}@example.com".lower(),
+                     profile_descriptor(profile), int(is_manager_profile(profile)), hire, profile,
+                     _location(rng, loc_rng, others), PROFILE_DEPARTMENT[profile],
+                     f"P-{1001 + i}", hire))
     # The promotion is the README's story: a Toronto Sales_Rep becomes a Sales_Team_Lead.
-    promoted = next(w["id"] for w in workers if w["id"] != DUP_WORKER
-                    and w["job_profile"] == "Sales_Rep" and w["location"] == "Toronto, ON")
-    pool = [w["id"] for w in workers if w["id"] not in (DUP_WORKER, promoted)]
+    promoted = next(r[0] for r in rows if r[0] != DUP_WORKER
+                    and r[6] == "Sales_Rep" and r[7] == "Toronto, ON")
+    pool = [r[0] for r in rows if r[0] not in (DUP_WORKER, promoted)]
     ids = rng.sample(pool, 10)
-    # Exactly two workers start in Vancouver, none of them with a planned change.
-    quiet = [w["id"] for w in workers if w["id"] not in (DUP_WORKER, promoted, *ids)]
-    for wid in sorted(loc_rng.sample(quiet, N_VANCOUVER)):
-        conn.execute("UPDATE workers SET location=? WHERE id=?", (VANCOUVER, wid))
-    conn.commit()
+    # Two more workers move to Vancouver on the bad day, none of them with a planned change.
+    quiet = [r[0] for r in rows if r[0] not in (DUP_WORKER, promoted, *ids)]
+    vancouver = sorted(loc_rng.sample(quiet, N_VANCOUVER))
     plans = [
         (ids[0], "Hire", {}),
         (promoted, "Promotion", {"job_profile": PROMOTED_PROFILE}),
-        (ids[1], "Transfer", {"location": "Vancouver, BC"}),
+        (ids[1], "Transfer", {"location": VANCOUVER}),
         (ids[2], "Termination", {}),
         (DUP_WORKER, "Data_Change", {"business_title": "Senior Associate"}),
     ]
@@ -80,7 +72,31 @@ def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
             fields["department"] = PROFILE_DEPARTMENT[fields["job_profile"]]
         out.append({"worker_id": wid, "reason": reason, "fields": fields,
                     "completed": completed})
-    return out
+    return rows, out, vancouver
+
+
+def seed_workers(conn, n_workers=100, rng_seed=7) -> list[dict]:
+    """Insert the workers in their clean state (nobody in Vancouver, no job changes) and
+    return the planned job changes without applying them (see plan_bad_day)."""
+    rows, plans, _ = _generate(n_workers, rng_seed)
+    conn.executemany(
+        "INSERT INTO workers (id, descriptor, email, business_title, is_manager,"
+        " hire_date, job_profile, location, department, position_id, status_date)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    return plans
+
+
+def plan_bad_day(n_workers=100, rng_seed=7) -> tuple[list[dict], list[str]]:
+    """The bad day's job changes and the workers who quietly move to Vancouver."""
+    _, plans, vancouver = _generate(n_workers, rng_seed)
+    return plans, vancouver
+
+
+def move_to_vancouver(conn, worker_ids) -> None:
+    for wid in worker_ids:
+        conn.execute("UPDATE workers SET location=? WHERE id=?", (VANCOUVER, wid))
+    conn.commit()
 
 
 def apply_changes(conn, plans: list[dict]) -> None:
@@ -96,9 +112,10 @@ def apply_changes(conn, plans: list[dict]) -> None:
 
 
 def seed(conn, n_workers=100, rng_seed=7) -> list[dict]:
-    """Workers plus applied changes, for an HRIS on its own. hrsync.seeding.seed_all is the
-    two-system seed that captures Ethena before the changes land."""
+    """Workers plus the bad day applied, for an HRIS on its own. hrsync.seeding has the
+    two-system clean seed and bad day."""
     plans = seed_workers(conn, n_workers, rng_seed)
+    move_to_vancouver(conn, plan_bad_day(n_workers, rng_seed)[1])
     apply_changes(conn, plans)
     return plans
 

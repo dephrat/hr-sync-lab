@@ -18,6 +18,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.setenv(k, str(tmp_path / v))
     monkeypatch.setenv("RULES_PATH", str(RULES))
     assert cli.main(["seed"]) == 0
+    assert cli.main(["bad-day"]) == 0
     hc = TestClient(create_hris(tmp_path / "hris.db"))
     ec = TestClient(create_app(tmp_path / "ethena.db"))
     ec.auth = ("anyone", "test-key")
@@ -130,3 +131,8 @@ def test_run_is_full_and_changes_only_is_incremental(env, capsys):
     assert full["changes_seen"] > 12 and full["failed"] == 0
     assert cli.main(["run", "--json", "--changes-only"]) == 0
     assert json.loads(capsys.readouterr().out)["changes_seen"] <= 1
+
+
+def test_bad_day_twice_is_a_noop(env, capsys):
+    assert cli.main(["bad-day"]) == 0
+    assert "already here" in capsys.readouterr().out

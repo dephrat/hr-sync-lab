@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from ethena.app import create_app
 from hris.app import create_app as create_hris
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, RateLimited, WorkdayClient
 
@@ -17,7 +17,8 @@ WM = "job_changes.completed_from"
 
 @pytest.fixture
 def env(tmp_path):
-    facts = seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    facts = bad_day(tmp_path / "hris.db", tmp_path / "ethena.db")
     hc = TestClient(create_hris(tmp_path / "hris.db"))
     ec = TestClient(create_app(tmp_path / "ethena.db"))
     ec.auth = ("anyone", "test-key")

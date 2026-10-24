@@ -1,4 +1,4 @@
-"""hrsync command line: seed / serve / run / queue / resolve / report."""
+"""hrsync command line: seed / bad-day / serve / run / queue / resolve / report."""
 import argparse
 import json
 import sys
@@ -52,8 +52,20 @@ def _seed(settings: Settings, args) -> int:
     seed_all(settings.hris_db, settings.ethena_db)
     n = lambda path, t: sqlite3.connect(path).execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
     print(f"seeded {n(settings.hris_db, 'workers')} workers, "
-          f"{n(settings.ethena_db, 'learners')} learners, "
-          f"{n(settings.hris_db, 'job_changes')} job changes")
+          f"{n(settings.ethena_db, 'learners')} learners "
+          "(clean: the two systems match; run `hrsync bad-day` for the messy Monday)")
+    return 0
+
+
+def _bad_day(settings: Settings, args) -> int:
+    from hrsync.seeding import bad_day, summary
+
+    s = summary(bad_day(settings.hris_db, settings.ethena_db))
+    if s.get("already"):
+        print("the bad day is already here; run `hrsync seed` for a clean start")
+    else:
+        print(f"bad day injected: {s['changes']} job changes, {s['duplicates']} duplicate account, "
+              f"{s['missing']} missing people, {s['overdue']} overdue enrollments")
     return 0
 
 
@@ -172,6 +184,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="hrsync")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("seed").set_defaults(fn=_seed)
+    sub.add_parser("bad-day").set_defaults(fn=_bad_day)
     sub.add_parser("serve").set_defaults(fn=_serve)
     w = sub.add_parser("web")
     w.add_argument("--host")

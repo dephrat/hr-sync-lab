@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from ethena.app import create_app
 from hris.app import create_app as create_hris
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, WorkdayClient
 from mcp_server import tools
@@ -22,6 +22,7 @@ RULES = Path(engine.__file__).parent / "rules.default.json"
 
 def seed_dbs(tmp_path):
     seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    bad_day(tmp_path / "hris.db", tmp_path / "ethena.db")
 
 
 @pytest.fixture

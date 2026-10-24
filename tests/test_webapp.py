@@ -3,7 +3,7 @@ from starlette.testclient import TestClient
 
 from hrsync import store
 from hrsync.config import Settings
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 from webapp.app import create_app
 
 
@@ -14,6 +14,7 @@ def settings(tmp_path):
                  ethena_db=str(tmp_path / "ethena.db"),
                  rules_path="hrsync/rules.default.json")
     seed_all(s.hris_db, s.ethena_db)
+    bad_day(s.hris_db, s.ethena_db)
     return s
 
 
@@ -48,12 +49,22 @@ def test_reset_twice_then_state_ok(client):
         assert r.status_code == 200
         body = r.json()
         assert body["ok"] is True and body["workers"] > 0 and body["learners"] > 0
-        assert body["changes"] > 0
+        assert body["changes"] == 0  # reset is the clean state
     assert client.get("/api/state").status_code == 200
 
 
-def test_report_after_reset_before_run(client):
+def test_bad_day_endpoint_then_already_then_reset(client):
+    assert client.post("/api/reset").status_code == 200
+    assert client.post("/api/bad_day").json() == {"changes": 12, "duplicates": 1,
+                                                  "missing": 3, "overdue": 2}
+    assert client.post("/api/bad_day").json() == {"already": True}
+    assert client.post("/api/reset").json()["changes"] == 0
+    assert client.post("/api/bad_day").json()["changes"] == 12
+
+
+def test_report_after_bad_day_before_run(client):
     client.post("/api/reset")
+    client.post("/api/bad_day")
     rep = client.get("/api/report").json()
     assert "generated_at" in rep
     secs = {s["name"]: s for s in rep["sections"]}

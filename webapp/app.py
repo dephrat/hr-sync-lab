@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from hrsync import store
 from hrsync.config import Settings
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all, summary
 from reconcile import report
 from webapp import api
 from webapp.clients import make_bundle
@@ -79,6 +79,11 @@ def create_app(settings: Settings) -> FastAPI:
             return {"ok": True, "workers": _count(settings.hris_db, "workers"),
                     "learners": _count(settings.ethena_db, "learners"),
                     "changes": _count(settings.hris_db, "job_changes")}
+
+    @app.post("/api/bad_day")
+    def inject_bad_day():
+        with api.WRITE_LOCK:
+            return summary(bad_day(settings.hris_db, settings.ethena_db))
 
     @app.get("/api/report")
     def get_report():

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from ethena.app import create_app
 from hris.app import create_app as create_hris
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 from hrsync import engine, rules, store
 from hrsync.clients import EthenaClient, WorkdayClient
 from reconcile import report
@@ -25,7 +25,8 @@ def env(tmp_path):
     ec.auth = ("anyone", "test-key")
     r = rules.load(Path(engine.__file__).parent / "rules.default.json")
     db = store.connect(tmp_path / "sync.db")
-    facts = seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    facts = bad_day(tmp_path / "hris.db", tmp_path / "ethena.db")
     return {"facts": facts, "hc": hc, "hris": WorkdayClient(hc), "learning": EthenaClient(ec), "rules": r,
             "db": db, "paths": (tmp_path / "hris.db", tmp_path / "ethena.db",
                                 tmp_path / "sync.db")}

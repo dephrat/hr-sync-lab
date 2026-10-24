@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ethena.app import create_app
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 
 AUTH = ("anyone", "test-key")
 
@@ -10,6 +10,7 @@ AUTH = ("anyone", "test-key")
 @pytest.fixture
 def client(tmp_path):
     seed_all(tmp_path / "hris.db", tmp_path / "ethena.db")
+    bad_day(tmp_path / "hris.db", tmp_path / "ethena.db")
     c = TestClient(create_app(tmp_path / "ethena.db"))
     c.auth = AUTH
     return c

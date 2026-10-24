@@ -2,7 +2,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from hrsync.config import Settings
-from hrsync.seeding import seed_all
+from hrsync.seeding import bad_day, seed_all
 from webapp.app import create_app
 
 
@@ -13,6 +13,7 @@ def settings(tmp_path):
                  ethena_db=str(tmp_path / "ethena.db"),
                  rules_path="hrsync/rules.default.json")
     seed_all(s.hris_db, s.ethena_db)
+    bad_day(s.hris_db, s.ethena_db)
     return s
 
 
@@ -219,13 +220,29 @@ def test_hire_then_sync_adds_to_ethena(client):
     assert all(i["worker_id"] != wid for i in client.get("/api/drift").json()["items"])
 
 
-def test_completing_seeded_overdue_clears_report(client):
+def test_completing_seeded_overdue_clears_report(client, settings):
+    import sqlite3
     auth = {"Authorization": "Basic " + __import__("base64").b64encode(b"web:test-key").decode()}
-    late = client.get("ethena/v1/learner-training-campaigns",
-                      params={"completionStatus": "PAST_DEADLINE", "limit": 100}, headers=auth).json()["data"]
+    late = sqlite3.connect(settings.ethena_db).execute(
+        "SELECT id FROM enrollments WHERE deadline < strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        " AND completion_status != 'COMPLETED'").fetchall()
     assert len(late) == 2
-    for e in late:
-        assert client.post(f"ethena/v1/learner-training-campaigns/{e['id']}/complete",
+    for (eid,) in late:
+        assert client.post(f"ethena/v1/learner-training-campaigns/{eid}/complete",
                            headers=auth).status_code == 204
     secs = {s["name"]: s for s in client.get("/api/report").json()["sections"]}
     assert secs["overdue_by_department"]["rows"] == []
+
+
+def test_clean_seed_has_no_drift(tmp_path):
+    s = Settings(hris_url="", ethena_url="", ethena_api_key="test-key",
+                 sync_db=str(tmp_path / "sync.db"), hris_db=str(tmp_path / "hris.db"),
+                 ethena_db=str(tmp_path / "ethena.db"), rules_path="hrsync/rules.default.json")
+    facts = seed_all(s.hris_db, s.ethena_db)
+    assert facts["plans"] == [] and facts["absent_workers"] == []
+    c = TestClient(create_app(s))
+    assert c.get("/api/drift").json() == {"count": 0, "items": []}
+    secs = {x["name"]: x for x in c.get("/api/report").json()["sections"]}
+    assert secs["overdue_by_department"]["rows"] == []
+    assert secs["terminated_but_active"]["rows"] == []
+    assert c.get("/workday/jobChanges", params={"limit": 100}).json()["data"] == []

@@ -428,6 +428,17 @@ async function runSync() {
     await refreshCards();
   } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = label; }
 }
+async function badDay() {
+  const btn = $("sy-bad");
+  btn.disabled = true; btn.classList.add("busy");
+  try {
+    const r = await api("api/bad_day", { method: "POST" });
+    if (r.already) { toast("The bad day is already here. Reset demo for a clean start."); return; }
+    toast("A bad day just happened. Look at the out-of-sync panel, then press Run sync.");
+    await Promise.all([loadState(), loadQueue(), loadDrift()]);
+    await refreshCards();
+  } finally { btn.disabled = false; btn.classList.remove("busy"); }
+}
 function ageOf(ts) {
   const t = Date.parse(ts); if (!t) return "";
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -576,6 +587,7 @@ $("reset").addEventListener("click", guard(reset));
 $("wd-q").addEventListener("input", debounce(guard(() => { wdPage = 0; return loadWorkers(); })));
 $("et-q").addEventListener("input", debounce(filterLearners, 150));
 $("sy-run").addEventListener("click", guard(runSync));
+$("sy-bad").addEventListener("click", guard(badDay));
 $("sy-all").addEventListener("change", guard(loadQueue));
 $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("sy-explain").addEventListener("submit", guard(explain));
