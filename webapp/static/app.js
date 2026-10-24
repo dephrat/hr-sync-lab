@@ -382,7 +382,7 @@ async function loadState() {
 }
 const DRIFT_GROUPS = [
   ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind)],
-  ["waiting", "Waiting for a person in the review queue", true, (i) => i.in_queue],
+  ["waiting", "Waiting for manual review", true, (i) => i.in_queue],
   ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous"],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner"],
   ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule"],
@@ -536,7 +536,7 @@ async function showPerson(w) {
       ["Campaign", (x) => esc(x.campaignName)], ["Status", (x) => esc(x.completionStatus)],
       ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
     <h4>Sync activity, newest first</h4>
-    <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show checks that changed nothing</label></p>
+    <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show all</label></p>
     <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), [
       ["Time", (a) => esc(when(a.created_at))], ["Action", (a) => esc(a.action)],
       ["Outcome", (a) => esc(a.outcome)], ["Detail", (a) => esc(a.detail)]]) : "<p>No sync activity for this worker yet</p>") + "</div>" +

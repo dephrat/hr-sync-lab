@@ -52,7 +52,7 @@ The page opens clean: Workday and Ethena agree on all 100 people, and the out-of
 
 1. In the Sync tab, press **Demo a bad day**. It injects a messy Monday: 12 job changes Ethena has not heard about, a duplicate Ethena account, 3 people missing from Ethena, and 2 overdue enrollments.
 2. Read the out-of-sync panel: 13 people, each with one plain sentence (5 attribute changes, 3 people with a location not in the rules table, 3 with no Ethena account, 1 leaver still active, 1 shared email).
-3. Press Run sync. It fixes 9 of them and leaves 4 in the review queue for a person; the panel drops to those 4.
+3. Press Run sync. It fixes 9 of them and leaves 4 for manual review; the panel drops to those 4.
 4. Work the queue (map the duplicate to the right learner, or skip a Vancouver item with a note), then read the Report tab.
 
 A second story shows one change end to end:
