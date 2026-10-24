@@ -393,15 +393,15 @@ async function loadState() {
 }
 const DRIFT_GROUPS = [
   ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
-    "Run sync updates Ethena."],
+    "Run sync to update Ethena."],
   ["waiting", "Waiting for manual review", true, (i) => i.in_queue,
-    "Resolve or skip each one under Needs manual review."],
+    "Resolve or skip under Needs manual review."],
   ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous",
-    "Run sync sends this to manual review, where you pick the right account."],
+    "Run sync, then manual review."],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
-    "Run sync creates the account."],
+    "Run sync to create the account."],
   ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule",
-    "Run sync sends these to manual review. The lasting fix is adding the location or job profile to the rules table."],
+    "Run sync, then manual review."],
 ];
 async function loadDrift() {
   const d = await api("api/drift");
