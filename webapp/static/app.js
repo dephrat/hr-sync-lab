@@ -105,7 +105,9 @@ function initHire() {
       const w = await api("workday/workers", { method: "POST", body });
       toast(`Hired ${w.descriptor} (${w.id}). Run Sync to create their Ethena account.`);
       f.reset();
+      $("wd-q").value = w.id; // show the new person instead of page one of the list
       await Promise.all([loadWorkers(), loadChanges(), loadApprovals()]);
+      if (typeof showWorker === "function") await showWorker(w);
     } finally { btn.classList.remove("busy"); check(); }
   }));
 }
@@ -145,9 +147,10 @@ async function loadApprovals() {
     }
   })));
 }
+let wdShowAll = false;
 async function loadWorkers() {
   const q = $("wd-q").value.trim(), n = ++seq.wd;
-  const rows = await api("api/workers?q=" + encodeURIComponent(q));
+  const rows = await api("api/workers?q=" + encodeURIComponent(q) + (wdShowAll ? "&limit=500" : ""));
   if (n !== seq.wd) return;
   const box = $("wd-table");
   box.innerHTML = table(rows, [
@@ -155,8 +158,10 @@ async function loadWorkers() {
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? '<span class="st-term">Terminated</span>' : '<span class="st-act">Active</span>')],
-  ], true, `No workers match "${q}"`) + (rows && rows.length === 25 ? '<p class="muted">Showing the first 25. Search to narrow.</p>' : "");
+  ], true, `No workers match "${q}"`) + (!wdShowAll && rows && rows.length === 25 ? '<p class="muted">Showing the first 25. <a href="#" id="wd-all">Show everyone</a></p>' : "");
   bindRows(box, rows, showWorker);
+  const all = box.querySelector("#wd-all");
+  if (all) all.addEventListener("click", guard((ev) => { ev.preventDefault(); wdShowAll = true; return loadWorkers(); }));
 }
 async function showWorker(w) {
   cur.worker = w;

@@ -6,7 +6,7 @@ import threading
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -257,7 +257,7 @@ def skip(item_id: int, body: SkipIn, request: Request):
 
 
 @router.get("/workers")
-def search_workers(request: Request, q: str = ""):
+def search_workers(request: Request, q: str = "", limit: int = Query(25, ge=1, le=500)):
     b = _bundle(request)
     needle = q.strip().lower()
     out = []
@@ -273,7 +273,7 @@ def search_workers(request: Request, q: str = ""):
                     "location": w["location"]["descriptor"],
                     "department": w["primarySupervisoryOrganization"]["descriptor"],
                     "isManager": w["isManager"], "workerStatus": w["workerStatus"]})
-        if len(out) == 25:
+        if len(out) == limit:
             break
     return out
 
