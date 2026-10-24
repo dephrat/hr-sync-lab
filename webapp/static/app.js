@@ -87,6 +87,7 @@ async function loadWorkers() {
   const box = $("wd-table");
   box.innerHTML = table(rows, [
     ["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
+    ["Email", (w) => esc(w.primaryWorkEmail)],
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? "Terminated" : "Active")],
