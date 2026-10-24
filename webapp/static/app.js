@@ -51,10 +51,11 @@ const guard = (fn) => (...a) => { try { return Promise.resolve(fn(...a)).catch(f
 // rows: array of objects; cols: [[header, fn(row) -> html]]
 function table(rows, cols, onClick) {
   if (!rows || !rows.length) return '<p class="muted">none</p>';
-  const head = "<tr>" + cols.map((c) => `<th>${esc(c[0])}</th>`).join("") + "</tr>";
+  // Clickable tables get a visible "Open" button in every row, so the affordance is obvious.
+  const head = "<tr>" + cols.map((c) => `<th>${esc(c[0])}</th>`).join("") + (onClick ? "<th></th>" : "") + "</tr>";
   const body = rows.map((r, i) => `<tr data-i="${i}"${onClick ? ' class="click"' : ""}>` +
     cols.map((c) => { let v = ""; try { v = c[1](r); } catch (e) { v = ""; } return `<td>${v ?? ""}</td>`; })
-      .join("") + "</tr>").join("");
+      .join("") + (onClick ? '<td class="rowact"><button type="button" class="rowbtn">Open</button></td>' : "") + "</tr>").join("");
   return `<div class="tablewrap"><table>${head}${body}</table></div>`;
 }
 function bindRows(container, rows, onClick) {

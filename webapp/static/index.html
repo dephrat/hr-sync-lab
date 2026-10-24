@@ -29,6 +29,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">The people system. Change someone's job here, then let the sync carry it to Ethena.</p>
     <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
     <div id="wd-detail"></div>
+    <p class="hint">Click a row, or its Open button, to see the full record and give that person a job change.</p>
     <div id="wd-table"></div>
     <h3>Recent job changes</h3>
     <p class="muted">Newest first. These are what the next sync run will pick up.</p>
@@ -39,6 +40,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">Read-only. This is what the training system currently believes about each person.</p>
     <input id="et-q" class="search" placeholder="Filter by name, id, email, country, department or category">
     <div id="et-detail"></div>
+    <p class="hint">Click a row to see what training this person is enrolled in.</p>
     <div id="et-table"></div>
     <h3>Campaigns</h3>
     <p class="muted">Each campaign enrolls people automatically based on their attributes.</p>
