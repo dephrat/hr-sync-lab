@@ -71,7 +71,9 @@ The seed (`hrsync seed`, implemented once in `hrsync/seeding.py`) is determinist
 
 - **ADP / payroll.** Another client behind its own Protocol, feeding the same engine or a second engine with its own rules and watermark.
 - **n8n.** Notifications and the human-review loop are the natural n8n piece: a workflow that polls `review_queue` for new open items, posts them to the HR Ops channel, and calls `hrsync resolve` with the reviewer's answer.
-- **Web UI for the queue.** A small page over `review_queue` that calls the same `engine.resolve_with_learner` the CLI and MCP tool use.
+- **Web UI for the queue.** Built as the demo page; see [design-ui.md](design-ui.md).
 - **Scheduler.** A cron line runs `hrsync run`; see the [runbook](runbook.md).
 - **Auth on the mocks.** The HRIS mock has none and the Ethena mock checks one fixed Basic password. A real deployment uses Workday OAuth client credentials and an Ethena API key, both issued and rotated by IT.
 - **Deployment.** The sync is a CLI plus three SQLite files; it would run as a scheduled container with `sync.db` on a persistent volume, or with the store moved to Postgres.
+
+The demo page has its own design note: [design-ui.md](design-ui.md).

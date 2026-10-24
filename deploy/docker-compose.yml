@@ -1,0 +1,14 @@
+services:
+  hrsync:
+    build: ./app
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.hrsync.entrypoints: "websecure"
+      traefik.http.routers.hrsync.rule: "Host(`hrsync.ephrat.ai`) && PathPrefix(`/${HRSYNC_KEY}`)"
+      traefik.http.routers.hrsync.tls.certresolver: "letsencrypt"
+      traefik.http.routers.hrsync.middlewares: "hrsync-strip"
+      traefik.http.middlewares.hrsync-strip.stripprefix.prefixes: "/${HRSYNC_KEY}"
+      traefik.http.services.hrsync.loadbalancer.server.port: "8003"

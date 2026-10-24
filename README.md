@@ -35,7 +35,25 @@ One `hrsync run`:
                                        |                  |
               mcp_server/  7 tools over stdio      reconcile/  SQL drift report
               (Claude Desktop; uses clients+store) (attaches all three .db files)
+                                       |
+              webapp/  one-page demo, mounts both mocks and the engine
+              (hrsync web, :8003; see Demo page below)
 ```
+
+## Demo page
+
+`webapp/` is a single page that shows the whole story without a terminal. Run it locally with `uv run hrsync seed && uv run hrsync web`, then open http://127.0.0.1:8003/. The deployed copy runs in a container behind a secret path; see [deploy/README.md](deploy/README.md).
+
+The story takes six clicks:
+
+1. In the Workday tab, promote someone (Chloe Chen, a Toronto sales rep, becomes a team lead).
+2. In the Ethena tab, check that her learner has no manager course yet.
+3. Press Run sync.
+4. Read the sentences the page prints for each change: what was patched, what was queued and why.
+5. Check Ethena again: her attributes changed and she is enrolled in Manager Fundamentals.
+6. Resolve a queue item, then read the Report to see the drift that is left.
+
+Reset puts all three databases back to the seed.
 
 ## Quickstart
 
@@ -93,12 +111,12 @@ Neither Workday nor Ethena offers a public sandbox. The mocks follow the publish
 
 ## What's deliberately left out
 
-ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a web UI for the queue, a scheduler (the runbook has the cron line), real auth on the mocks, and deployment. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
+ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a scheduler (the runbook has the cron line), and real auth on the mocks. The demo page is deployed, but the sync itself is not scheduled anywhere. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
 
 ## Tests
 
 ```
-uv run pytest    # 59 tests
+uv run pytest    # 79 tests
 ```
 
 ## Docs

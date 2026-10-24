@@ -93,3 +93,11 @@ Edit `hrsync/rules.default.json` (or the file `RULES_PATH` points at). The locat
 ```
 
 A location sets `country` and either `state` (US) or `customCategory` (Canadian province). A profile sets `isManager` and may set `customCategory`, which then wins over the location's (that is how warehouse roles get the warehouse safety campaign). If the new values should enroll people in a campaign, add or check the matching entry in `campaigns` and confirm with Enablement that the campaign audience in Ethena uses the same attributes. Then run `uv run pytest`, deploy the file, and resolve the queued items with `--map-learner`.
+
+## Web page
+
+`hrsync web` serves the demo page (see [design-ui.md](design-ui.md)). HR Operations uses it to work the review queue without a terminal: the Queue tab lists open items with the reason code, and each can be skipped with a note or closed by picking the learner it belongs to, which is the same action as `hrsync resolve`. Run sync starts one sync pass and prints a sentence per change. Report shows the drift report.
+
+Reset puts the workers, learners, sync state and queue back to the seed. It is meant for the demo and wipes everything the page created, so never run it against data anyone cares about.
+
+The deployed page sits behind a secret path prefix: `https://hrsync.ephrat.ai/<key>/`. The key is in `/docker/hrsync/.env` on the VPS and in `~/.hrsync-demo-key` on the maintainer's Mac. It is never stored in the repo. To rotate it, follow the last line of [deploy/README.md](../deploy/README.md).
