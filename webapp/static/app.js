@@ -178,16 +178,17 @@ async function renderEthena() {
 const isDone = (e) => /COMPLETE/i.test(e.completionStatus || "");
 const isLate = (e) => !isDone(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||
   (e.deadline && Date.parse(e.deadline) < Date.now()));
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function shortDate(iso) {
+  const d = String(iso || "").slice(0, 10).split("-");
+  return d.length === 3 ? `${MONTHS[+d[1] - 1]} ${+d[2]}` : "";
+}
 function pills(l) {
   return (l.enrollments || []).map((e) => {
     const cls = isDone(e) ? "done" : isLate(e) ? "late" : "";
-    const tip = `${e.completionStatus || ""}, due ${String(e.deadline || "").slice(0, 10)}`;
-    return `<span class="tpill ${cls}" title="${esc(tip)}">${isLate(e) ? '<i class="dot"></i>' : ""}${esc(e.campaignName)}</span>`;
+    const when = isDone(e) ? "completed" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
+    return `<span class="tpill ${cls}">${esc(e.campaignName)}<em>${esc(when)}</em></span>`;
   }).join(" ") || '<span class="muted">none</span>';
-}
-function dueNext(l) {
-  const d = (l.enrollments || []).filter((e) => !isDone(e) && e.deadline).map((e) => String(e.deadline).slice(0, 10)).sort();
-  return d[0] || "";
 }
 function attrString(l) {
   return [l.country, l.state, l.isManager ? "manager" : null].filter(Boolean).join(" \u00b7 ");
@@ -200,7 +201,7 @@ function filterLearners() {
   box.innerHTML = '<div class="ethena-tbl">' + table(rows, [
     ["Learner", (l) => `${esc(l.name)}<div class="help">${esc(l.id)}</div>`],
     ["Status", (l) => `<span class="spill ${l.status === "ACTIVE" ? "act" : "term"}">${esc(l.status)}</span>`],
-    ["Training", pills], ["Due next", dueNext],
+    ["Training", pills],
     ["Attributes", (l) => `<span class="muted">${esc(attrString(l))}</span>`],
   ].map((c) => c[0] === "Learner" ? ["Name", c[1]] : c), true, `No learners match "${q}"`) + "</div>";
   bindRows(box, rows, showLearner);
