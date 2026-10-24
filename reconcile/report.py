@@ -46,7 +46,9 @@ def _table(headers, rows) -> str:
     return "\n".join(lines)
 
 
-def build(hris_db, ethena_db, sync_db, now: datetime) -> str:
+def sections(hris_db, ethena_db, sync_db, now: datetime) -> list[dict]:
+    """The reconciliation sections as structured rows, in SECTIONS order. Writes nothing
+    except creating the empty sync schema when the sync database does not exist yet."""
     stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     queries = load_queries()
     store.connect(sync_db).close()  # a never-run sync has no tables yet
@@ -54,7 +56,7 @@ def build(hris_db, ethena_db, sync_db, now: datetime) -> str:
     conn.row_factory = sqlite3.Row
     for alias, path in (("hris", hris_db), ("ethena", ethena_db), ("sync", sync_db)):
         conn.execute(f"ATTACH DATABASE ? AS {alias}", (str(path),))
-    out = [f"# HR sync reconciliation, {stamp}"]
+    out = []
     for name, title in SECTIONS:
         if name == "stale_enrollments":
             headers, rows = _stale_enrollments(conn, queries)
@@ -62,6 +64,16 @@ def build(hris_db, ethena_db, sync_db, now: datetime) -> str:
             cur = conn.execute(queries[name], {"now": stamp} if ":now" in queries[name] else {})
             headers = [d[0] for d in cur.description]
             rows = [tuple(r) for r in cur.fetchall()]
-        out.append(f"## {title}\n\nCount: {len(rows)}\n\n{_table(headers, rows)}")
+        out.append({"name": name, "title": title, "headers": headers,
+                    "rows": [list(r) for r in rows]})
     conn.close()
+    return out
+
+
+def build(hris_db, ethena_db, sync_db, now: datetime) -> str:
+    stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    out = [f"# HR sync reconciliation, {stamp}"]
+    for s in sections(hris_db, ethena_db, sync_db, now):
+        out.append(f"## {s['title']}\n\nCount: {len(s['rows'])}\n\n"
+                   f"{_table(s['headers'], s['rows'])}")
     return "\n\n".join(out) + "\n"

@@ -77,6 +77,16 @@ def _serve(settings: Settings, args) -> int:
     return 0
 
 
+def _web(settings: Settings, args) -> int:
+    import uvicorn
+
+    from webapp.app import create_app
+
+    uvicorn.run(create_app(settings), host=args.host or settings.web_host,
+                port=args.port or settings.web_port, log_level="warning")
+    return 0
+
+
 def _run(settings: Settings, args) -> int:
     hris, learning = _build_clients(settings)
     conn = store.connect(settings.sync_db)
@@ -165,6 +175,10 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("seed").set_defaults(fn=_seed)
     sub.add_parser("serve").set_defaults(fn=_serve)
+    w = sub.add_parser("web")
+    w.add_argument("--host")
+    w.add_argument("--port", type=int)
+    w.set_defaults(fn=_web)
     r = sub.add_parser("run")
     r.add_argument("--no-create", action="store_true")
     r.add_argument("--json", action="store_true")

@@ -152,6 +152,7 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
         now: datetime | None = None, create_missing: bool = True) -> RunSummary:
     now = now or datetime.now(UTC)
     summary = RunSummary(run_id=new_run_id(now))
+    started_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     completed_from = store.get_watermark(store_conn) or "1970-01-01T00:00:00Z"
     try:
         changes = hris.job_changes_since(completed_from)
@@ -164,11 +165,13 @@ def run(hris: HrisClient, learning: LearningClient, rules: Rules, store_conn,
                                  now, create_missing)
         if outcome == "failed":
             summary.failed += 1
+            store.record_run(store_conn, summary.to_dict(), started_at)
             return summary
         setattr(summary, outcome, getattr(summary, outcome) + 1)
     if changes:
         store.set_watermark(store_conn, max(c["completedDate"] for c in changes))
         store_conn.commit()
+        store.record_run(store_conn, summary.to_dict(), started_at)
     return summary
 
 

@@ -1,0 +1,76 @@
+import pytest
+from starlette.testclient import TestClient
+
+from hrsync import store
+from hrsync.config import Settings
+from hrsync.seeding import seed_all
+from webapp.app import create_app
+
+
+@pytest.fixture
+def settings(tmp_path):
+    s = Settings(hris_url="", ethena_url="", ethena_api_key="test-key",
+                 sync_db=str(tmp_path / "sync.db"), hris_db=str(tmp_path / "hris.db"),
+                 ethena_db=str(tmp_path / "ethena.db"),
+                 rules_path="hrsync/rules.default.json")
+    seed_all(s.hris_db, s.ethena_db)
+    return s
+
+
+@pytest.fixture
+def client(settings):
+    return TestClient(create_app(settings))
+
+
+def test_root_serves_html(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Workday (mock)" in r.text
+
+
+def test_mounted_mocks(client):
+    r = client.get("/workday/workers?limit=1")
+    assert r.status_code == 200 and "total" in r.json()
+    assert client.get("/ethena/v1/learners?limit=1").status_code == 401
+    assert client.get("/ethena/v1/learners?limit=1", auth=("x", "test-key")).status_code == 200
+
+
+def test_state_before_run(client):
+    s = client.get("/api/state").json()
+    assert s["last_run"] is None and s["open_queue"] == 0
+    assert s["watermark"] is None and s["failed_last_run"] == 0
+
+
+def test_reset_twice_then_state_ok(client):
+    for _ in range(2):
+        r = client.post("/api/reset")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True and body["workers"] > 0 and body["learners"] > 0
+        assert body["changes"] > 0
+    assert client.get("/api/state").status_code == 200
+
+
+def test_report_after_reset_before_run(client):
+    client.post("/api/reset")
+    rep = client.get("/api/report").json()
+    assert "generated_at" in rep
+    secs = {s["name"]: s for s in rep["sections"]}
+    assert len(secs["terminated_but_active"]["rows"]) == 1
+    assert len(secs["overdue_by_department"]["rows"]) >= 1
+
+
+def test_run_recorded(settings):
+    from datetime import UTC, datetime
+    from webapp.clients import make_bundle
+    from hrsync import engine
+    b = make_bundle(settings)
+    conn = store.connect(settings.sync_db)
+    now = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
+    summary = engine.run(b.hris, b.learning, b.rules, conn, now=now)
+    last = store.last_run(conn)
+    assert last["run_id"] == summary.run_id
+    assert last["started_at"] == "2026-10-23T12:00:00Z"
+    assert last["changes_seen"] == summary.changes_seen
+    conn.close()

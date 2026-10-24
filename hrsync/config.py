@@ -12,6 +12,8 @@ class Settings:
     hris_db: str
     ethena_db: str
     rules_path: str
+    web_host: str = "127.0.0.1"
+    web_port: int = 8003
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -24,4 +26,6 @@ class Settings:
             hris_db=env("HRIS_DB", "./data/hris.db"),
             ethena_db=env("ETHENA_DB", "./data/ethena.db"),
             rules_path=env("RULES_PATH", "hrsync/rules.default.json"),
+            web_host=env("WEB_HOST", "127.0.0.1"),
+            web_port=int(env("WEB_PORT", "8003")),
         )

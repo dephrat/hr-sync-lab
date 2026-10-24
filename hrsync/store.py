@@ -1,4 +1,5 @@
 """SQLite state for the sync engine: watermark, worker->learner map, audit log, review queue."""
+import json
 import sqlite3
 from pathlib import Path
 
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE TABLE IF NOT EXISTS review_queue (
     id INTEGER PRIMARY KEY, change_id TEXT, worker_id TEXT, reason TEXT, detail TEXT,
     status TEXT, created_at TEXT, resolved_at TEXT, resolution TEXT);
+CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, started_at TEXT, summary TEXT);
 """
 
 
@@ -67,3 +69,19 @@ def queue_item(conn, change_id, worker_id, reason, detail, at) -> None:
     conn.execute("INSERT INTO review_queue (change_id, worker_id, reason, detail, status,"
                  " created_at) VALUES (?,?,?,?,'open',?)",
                  (change_id, worker_id, reason, detail, at))
+
+
+def record_run(conn, summary: dict, started_at: str) -> None:
+    """Store one run's summary (a dict with a run_id) so it can be shown after the fact."""
+    conn.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?)",
+                 (summary["run_id"], started_at, json.dumps(summary, sort_keys=True)))
+    conn.commit()
+
+
+def last_run(conn) -> dict | None:
+    """The newest recorded run by started_at: {"run_id", "started_at", **summary}."""
+    row = conn.execute("SELECT run_id, started_at, summary FROM runs"
+                       " ORDER BY started_at DESC, rowid DESC LIMIT 1").fetchone()
+    if row is None:
+        return None
+    return {**json.loads(row[2]), "run_id": row[0], "started_at": row[1]}

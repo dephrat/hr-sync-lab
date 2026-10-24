@@ -60,3 +60,13 @@ def test_after_sync(env):
         "businessTitle": "Senior Specialist"})
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW)
     assert count(build(env), "In HRIS, not in Ethena") == 5
+
+
+def test_sections_shape(env):
+    secs = report.sections(*env["paths"], NOW)
+    assert [s["name"] for s in secs] == [n for n, _ in report.SECTIONS]
+    assert [s["title"] for s in secs] == SECTIONS
+    for s in secs:
+        assert isinstance(s["headers"], list) and isinstance(s["rows"], list)
+    md = build(env)
+    assert all(f"## {t}" in md for t in SECTIONS)
