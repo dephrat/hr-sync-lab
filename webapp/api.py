@@ -93,29 +93,30 @@ def _name(b, cache: dict, worker_id: str) -> str:
     return cache[worker_id]
 
 
+_REGION_NAMES = {r["value"]: r["label"] for rs in rules_mod.CHOICES["regions"].values() for r in rs}
+_COUNTRY_NAMES = {"CAN": "Canada", "USA": "USA"}
+
+
 def _phrase(detail: str) -> str:
-    """Turn the patch diff (a JSON dict of changed attributes) into plain words."""
+    """Turn the patch diff (a JSON dict of changed attributes) into plain words a person
+    in HR would use: what happened to the employee, not which field changed."""
     try:
         diff = dict(json.loads(detail))
     except (ValueError, TypeError):
         return detail
     parts = []
     if "isManager" in diff:
-        parts.append("now a manager" if diff.pop("isManager") else "no longer a manager")
-    if "country" in diff:
-        text = f"country set to {diff.pop('country')}"
-        if diff.get("state"):
-            text += f" ({diff.pop('state')})"
-        parts.append(text)
-    if "state" in diff:
-        v = diff.pop("state")
-        parts.append("state cleared" if v is None else f"state set to {v}")
-    if "customCategory" in diff:
-        v = diff.pop("customCategory")
-        parts.append("category cleared" if v is None else f"category set to {v}")
-    if "department" in diff:
-        parts.append(f"department now {diff.pop('department')}")
-    return ", ".join(parts) or "attributes updated"
+        parts.append("became a manager" if diff.pop("isManager") else "is no longer a manager")
+    country = diff.pop("country", None)
+    region = diff.pop("state", None) or diff.pop("customCategory", None)
+    diff.pop("state", None), diff.pop("customCategory", None)
+    if country or region:
+        where = ", ".join(x for x in (_REGION_NAMES.get(region, region),
+                                      _COUNTRY_NAMES.get(country, country)) if x)
+        parts.append(f"now works in {where}")
+    if diff.get("department"):
+        parts.append(f"moved to the {diff.pop('department')} department")
+    return ", ".join(parts) or "details updated"
 
 
 GROUP = {"queued": "needs_person", "patched": "updated", "created": "updated",
@@ -502,8 +503,8 @@ def drift(request: Request):
                 diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
                 if diff:
                     kind = "attrs"
-                    sentence = (f"{name}: Workday says {_phrase(json.dumps(diff))}; "
-                                "Ethena has not been told.")
+                    sentence = (f"In Workday, {name} {_phrase(json.dumps(diff))}. "
+                                "Ethena has not been told yet.")
                 else:
                     have = {e["campaignName"] for e in enr.get(learner["id"], [])}
                     missing = sorted(rules.expected_campaigns(attrs) - have)
