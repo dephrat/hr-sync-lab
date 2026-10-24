@@ -133,6 +133,15 @@ def test_hire_rejects_bad_input(client):
     assert client.get("/workers").json()["total"] == 100
 
 
+def test_hire_business_title(client):
+    base = {"name": "Ana Lee", "jobProfile": "Sales_Rep", "location": "Toronto, ON"}
+    w = client.post("/workers", json={**base, "businessTitle": "Head of Vibes"}).json()
+    assert w["businessTitle"] == "Head of Vibes"
+    d = client.post("/workers", json={**base, "name": "Bo Lee"}).json()
+    assert d["businessTitle"] == d["jobProfile"]["descriptor"]
+    assert client.post("/workers", json={**base, "businessTitle": "x"}).status_code == 422
+
+
 def _pending(client, wid="W-1003"):
     r = client.post("/jobChanges", json={"workerId": wid, "effectiveDate": "2026-10-01",
                                          "reason": "Transfer", "location": "Remote - Canada"})

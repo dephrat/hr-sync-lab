@@ -94,18 +94,25 @@ form.jc { margin-top: 10px; }
 .st-term { color: #777; }
 
 .theme-workday { --wd-blue: #0875e1; --wd-bar: #1c2b36; border-top: 1px solid var(--line); border-radius: 4px; padding-top: 0; box-shadow: none !important; overflow: hidden; }
+.theme-workday { background: #f0f4f8; }
 .theme-workday .pbar { margin-top: 0; background: var(--wd-bar); }
+.theme-workday #wd-hire, .theme-workday #wd-table, .theme-workday #wd-changes, .theme-workday .approvals, .theme-workday .card { background: #fff; color: #333; border: 1px solid #d9e2ea; border-radius: 4px; box-shadow: 0 1px 3px rgba(16,40,60,.08); padding: 14px 18px; margin: 12px 0; }
+.theme-workday #wd-detail:empty, .theme-workday #wd-changes:empty { display: none; }
+.theme-workday #wd-hire { margin-bottom: 12px; }
 .theme-workday .pname { color: #fff; font-weight: 500; }
 .theme-workday h2 { font-weight: 500; color: #1c2b36; }
 .theme-workday a, .theme-workday a.namelink { color: var(--wd-blue); }
 .theme-workday button.primary { background: var(--wd-blue); border-color: var(--wd-blue); border-radius: 4px; }
-.theme-workday th { background: #f0f2f4; font-size: 13px; font-weight: 600; color: #4a5560; }
+.theme-workday th { background: #fff; border-bottom: 2px solid #0875e1 !important; font-size: 13px; font-weight: 600; color: #4a5560; }
 .theme-workday th, .theme-workday td { border-left: none; border-right: none; border-color: #e3e6e9; padding: 8px 10px; }
 .theme-workday .card { border-color: #dfe3e7; border-radius: 4px; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
 .theme-workday tr.sel td { background: #e8f2fd; }
 .theme-workday .search:focus, .theme-workday select:focus { outline: 2px solid var(--wd-blue); outline-offset: -1px; }
 
 .theme-ethena { --et-ink: #4a2fd0; border-top: 1px solid #e4defc; border-radius: 14px; padding-top: 0; overflow: hidden; }
+.theme-ethena { background: #faf8ff; }
+.theme-ethena #et-table, .theme-ethena #et-campaigns, .theme-ethena .card { background: #fff; color: #333; border: 1px solid #e4ddfa; border-radius: 12px; padding: 14px 18px; margin: 12px 0; }
+.theme-ethena #et-detail:empty, .theme-ethena #et-campaigns:empty { display: none; }
 .theme-ethena .pbar { margin-top: 0; background: #f4f1ff; border-bottom: 1px solid #e4defc; }
 .theme-ethena .pname { color: var(--et-ink); font-size: 18px; font-weight: 700; }
 .theme-ethena h2, .theme-ethena h3 { color: #2b1d7a; }
@@ -122,6 +129,7 @@ form.jc { margin-top: 10px; }
 .theme-ethena .camp { background: #fbfaff; }
 .theme-ethena .camp p { margin: 6px 0 0; }
 
+/* Sync stays plain on purpose: the engineering tool between two styled products. */
 .theme-sync { padding-top: 0; }
 .theme-sync .pbar { margin-top: 0; background: #f2f8f5; border-bottom: 1px solid #d4e8dd; }
 .theme-sync .pname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1B7F5A; font-size: 15px; }
@@ -140,6 +148,6 @@ ul.inbox { list-style: none; margin: 0; padding: 0; }
 ul.inbox li { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid #e3e6e9; }
 ul.inbox li:first-child { border-top: none; }
 ul.inbox .acts { display: flex; gap: 6px; }
-.course { background: #f4f1ff; border-radius: 10px; padding: 12px 16px; margin-top: 12px; }
+.course { background: #f4f1ff; border: 1px solid #d9cdfa; border-radius: 10px; padding: 12px 16px; margin-top: 12px; }
 .course label.opt { display: block; margin: 4px 0; cursor: pointer; }
 .course .wrong { color: #b5524f; margin: 6px 0; }

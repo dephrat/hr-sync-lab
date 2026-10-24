@@ -99,8 +99,10 @@ function initHire() {
     ev.preventDefault();
     btn.disabled = true; btn.classList.add("busy");
     try {
-      const w = await api("workday/workers", { method: "POST",
-        body: { name: f.name.value.trim(), jobProfile: f.jobProfile.value, location: f.location.value } });
+      const body = { name: f.name.value.trim(), jobProfile: f.jobProfile.value, location: f.location.value };
+      const bt = f.businessTitle.value.trim();
+      if (bt) body.businessTitle = bt;
+      const w = await api("workday/workers", { method: "POST", body });
       toast(`Hired ${w.descriptor} (${w.id}). Run Sync to create their Ethena account.`);
       f.reset();
       await Promise.all([loadWorkers(), loadChanges(), loadApprovals()]);

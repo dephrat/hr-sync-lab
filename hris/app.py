@@ -31,6 +31,7 @@ class HireIn(BaseModel):
     name: str
     jobProfile: str
     location: str
+    businessTitle: str | None = None
 
 
 def _ref(id_, descriptor):
@@ -110,6 +111,11 @@ def create_app(db_path) -> FastAPI:
             raise HTTPException(422, f"unknown jobProfile {body.jobProfile}")
         if body.location not in LOCATIONS:
             raise HTTPException(422, f"unknown location {body.location}")
+        title = None
+        if body.businessTitle is not None:
+            title = " ".join(body.businessTitle.split())
+            if not 2 <= len(title) <= 80:
+                raise HTTPException(422, "businessTitle must be 2 to 80 characters")
         top = conn.execute("SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) FROM workers").fetchone()[0]
         num = (top or 1000) + 1
         wid = f"W-{num:04d}"
@@ -124,10 +130,11 @@ def create_app(db_path) -> FastAPI:
             "INSERT INTO workers (id, descriptor, email, business_title, is_manager, hire_date,"
             " job_profile, location, department, position_id, status_date)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (wid, name, email, profile_descriptor(profile), int(is_manager_profile(profile)),
+            (wid, name, email, title or profile_descriptor(profile), int(is_manager_profile(profile)),
              today, profile, body.location, PROFILE_DEPARTMENT[profile], f"P-{num}", today))
         apply_job_change(conn, worker_id=wid, effective_date=today, reason="Hire",
                          completed_date=utc_now(), job_profile=profile, location=body.location,
+                         business_title=title,
                          department=PROFILE_DEPARTMENT[profile])
         r = conn.execute("SELECT * FROM workers WHERE id=?", (wid,)).fetchone()
         return JSONResponse(worker_json(r), status_code=201)
