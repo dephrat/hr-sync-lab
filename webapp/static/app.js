@@ -129,7 +129,9 @@ async function showWorker(w) {
     const term = form.reason.value === "Termination";
     const changed = (form.jobProfile.value && form.jobProfile.value !== curProfile) ||
       (form.location.value && form.location.value !== curLocation);
-    form.querySelector("button").disabled = !(term || changed);
+    const rec = form.querySelector("button");
+    rec.disabled = !(term || changed);
+    rec.title = rec.disabled ? "Pick a new job profile or location first" : "";
     $("jc-hint").textContent = term ? "Termination needs no other change." :
       changed ? "" : (form.jobProfile.value || form.location.value)
         ? "That is the same as the current value. Pick something different." :
@@ -142,13 +144,13 @@ async function showWorker(w) {
     const body = { workerId: wk.id, effectiveDate: new Date().toLocaleDateString("en-CA"), reason: f.reason.value };
     if (f.jobProfile.value) body.jobProfile = f.jobProfile.value;
     if (f.location.value) body.location = f.location.value;
-    btn.disabled = true;
+    btn.disabled = true; btn.classList.add("busy");
     try {
       await api("workday/jobChanges", { method: "POST", body });
       toast("Change recorded. Go to Sync and press Run sync.");
       await Promise.all([loadChanges(), loadWorkers()]);
       await showWorker(wk);
-    } finally { btn.disabled = false; }
+    } finally { btn.disabled = false; btn.classList.remove("busy"); }
   }));
 }
 async function loadChanges() {
@@ -236,7 +238,7 @@ function groupHtml(key, title, open, items) {
 }
 async function runSync() {
   const btn = $("sy-run");
-  btn.disabled = true; btn.textContent = "Running...";
+  btn.disabled = true; btn.classList.add("busy"); btn.textContent = "Running...";
   try {
     const r = await api("api/run", { method: "POST" });
     const s = r.summary || {}, changes = r.changes || [];
@@ -258,7 +260,7 @@ async function runSync() {
     }));
     await Promise.all([loadState(), loadQueue()]);
     await refreshCards();
-  } finally { btn.disabled = false; btn.textContent = "Run sync"; }
+  } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = "Run sync"; }
 }
 function ageOf(ts) {
   const t = Date.parse(ts); if (!t) return "";
@@ -299,7 +301,7 @@ function queueActions(q) {
 async function queueAct(b) {
   const id = b.dataset.id, box = $("sy-queue");
   const note = (box.querySelector(`[data-note="${id}"]`) || {}).value || "";
-  b.disabled = true;
+  b.disabled = true; b.classList.add("busy");
   try {
     if (b.dataset.act === "skip") {
       await api(`api/queue/${id}/skip`, { method: "POST", body: { note } });
@@ -318,7 +320,7 @@ async function queueAct(b) {
     }
     await Promise.all([loadQueue(), loadState()]);
     await refreshCards();
-  } finally { b.disabled = false; }
+  } finally { b.disabled = false; b.classList.remove("busy"); }
 }
 async function searchPeople() {
   const q = $("sy-q").value.trim(), box = $("sy-results"), n = ++seq.sy;
