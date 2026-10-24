@@ -111,7 +111,7 @@ Neither Workday nor Ethena offers a public sandbox. The mocks follow the publish
 
 ## What's deliberately left out
 
-ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a scheduler (the runbook has the cron line), and real auth on the mocks. The page runs behind a secret path on a private host; deploy/README.md has the procedure. The sync itself is not scheduled anywhere, and the sync itself is not scheduled anywhere. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
+ADP and payroll, n8n (the queue notifications and review loop would be the n8n piece), a scheduler (the runbook has the cron line), and real auth on the mocks. The page runs behind a secret path on a private host; deploy/README.md has the procedure. The sync itself is not scheduled anywhere. [docs/design.md](docs/design.md#deliberately-left-out) says how each would be added.
 
 ## Tests
 
