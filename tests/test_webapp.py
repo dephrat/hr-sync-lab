@@ -85,7 +85,7 @@ def test_static_assets_served(client):
 
 def test_index_has_tabs_and_no_em_dash(client):
     html = client.get("/").text
-    for title in ("Workday (mock)", "Ethena (mock)", "Sync", "Report"):
+    for title in ("Workday (mock)", "Sync", "Ethena (mock)", "Report"):
         assert title in html
     assert "—" not in html
     assert "__ASSET_VERSION__" not in html

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from hrsync import engine, store
+from hrsync.engine import ATTR_KEYS
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
 
@@ -100,7 +101,7 @@ def _phrase(detail: str) -> str:
         parts.append("now a manager" if diff.pop("isManager") else "no longer a manager")
     if "country" in diff:
         text = f"country set to {diff.pop('country')}"
-        if "state" in diff:
+        if diff.get("state"):
             text += f" ({diff.pop('state')})"
         parts.append(text)
     if "state" in diff:
@@ -336,3 +337,95 @@ def explain(body: ExplainIn, request: Request):
                 return _err(404, f"worker {body.worker_id} not found")
             raise
     return {"sentence": sentence}
+
+
+def _enrollment_map(b) -> tuple[list[dict], dict]:
+    camps = {c["id"]: c["campaignName"] for c in b.learning.list_campaigns()}
+    by_learner: dict[str, list[dict]] = {}
+    for e in b.learning.list_all_enrollments():
+        by_learner.setdefault(e["learnerId"], []).append({
+            "campaignName": camps.get(e["trainingCampaignId"], e["trainingCampaignId"]),
+            "completionStatus": e.get("completionStatus"), "deadline": e.get("deadline")})
+    return b.learning.list_learners(), by_learner
+
+
+@router.get("/learners")
+def learners(request: Request):
+    b = _bundle(request)
+    rows, enr = _enrollment_map(b)
+    return [{"id": l["id"], "name": l.get("name"), "email": l.get("email"),
+             "status": l.get("status"), "country": l.get("country"), "state": l.get("state"),
+             "isManager": l.get("isManager"), "customCategory": l.get("customCategory"),
+             "department": l.get("department"), "managerLearnerId": l.get("managerLearnerId"),
+             "workerType": l.get("workerType"), "enrollments": enr.get(l["id"], [])}
+            for l in rows]
+
+
+@router.get("/drift")
+def drift(request: Request):
+    b = _bundle(request)
+    rows, enr = _enrollment_map(b)
+    by_id = {l["id"]: l for l in rows}
+    by_email: dict[str, list[dict]] = {}
+    for l in rows:
+        by_email.setdefault((l.get("email") or "").lower(), []).append(l)
+    with _Store(request) as conn:
+        maps = dict(conn.execute("SELECT worker_id, learner_id FROM id_map").fetchall())
+        queued: dict[str, list[int]] = {}
+        for qid, wid in conn.execute("SELECT id, worker_id FROM review_queue WHERE status='open'"):
+            queued.setdefault(wid, []).append(qid)
+    items = []
+    for w in b.hris.list_workers():
+        wid, name = w["id"], w["descriptor"]
+        terminated = bool(w.get("workerStatus", {}).get("terminated"))
+        learner, kind, sentence = by_id.get(maps.get(wid)), None, None
+        if learner is None:
+            found = by_email.get((w.get("primaryWorkEmail") or "").lower(), [])
+            if len(found) > 1:
+                kind, sentence = "ambiguous", (f"{name}: two Ethena accounts share this email; "
+                                               "a person has to pick.")
+            elif found:
+                learner = found[0]
+            elif not terminated:
+                kind, sentence = "no_learner", f"{name}: in Workday, no Ethena account yet."
+            else:
+                continue
+        if kind is None and terminated:
+            if learner.get("status") != "ACTIVE":
+                continue
+            kind = "terminated"
+            sentence = f"{name}: left the company in Workday; Ethena still has them active."
+        elif kind is None:
+            profile, loc = w["jobProfile"]["id"], w["location"]["descriptor"]
+            attrs = b.rules.attributes_for(
+                profile, loc, w["primarySupervisoryOrganization"]["descriptor"])
+            if attrs is None:
+                what = ("job profile " + repr(w["jobProfile"]["descriptor"])
+                        if b.rules.missing(profile, loc) == "profile"
+                        else "location " + repr(loc))
+                kind = "needs_rule"
+                sentence = (f"Workday {what} is not in the rules table, so the sync "
+                            "cannot decide.")
+                if b.rules.missing(profile, loc) == "location":
+                    sentence = f"Workday location '{loc}' is not in the rules table, so the sync cannot decide."
+                sentence = f"{name}: {sentence}"
+            else:
+                diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
+                if diff:
+                    kind = "attrs"
+                    sentence = (f"{name}: Workday says {_phrase(json.dumps(diff))}; "
+                                "Ethena has not been told.")
+                else:
+                    have = {e["campaignName"] for e in enr.get(learner["id"], [])}
+                    missing = sorted(b.rules.expected_campaigns(attrs) - have)
+                    if missing:
+                        kind = "courses"
+                        sentence = (f"{name}: should be in {', '.join(missing)} "
+                                    "but is not enrolled.")
+        if kind is None:
+            continue
+        items.append({"worker_id": wid, "worker_name": name,
+                      "learner_id": learner["id"] if learner else None, "kind": kind,
+                      "sentence": sentence, "in_queue": wid in queued,
+                      "open_queue": queued.get(wid, [])})
+    return {"count": len(items), "items": items}

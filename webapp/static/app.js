@@ -97,8 +97,7 @@ async function loadWorkers() {
   if (n !== seq.wd) return;
   const box = $("wd-table");
   box.innerHTML = table(rows, [
-    ["Id", (w) => esc(w.id)], ["Name", (w) => esc(w.descriptor)],
-    ["Email", (w) => esc(w.primaryWorkEmail)],
+    ["Name", (w) => esc(w.descriptor)],
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? "Terminated" : "Active")],
@@ -168,15 +167,7 @@ async function loadChanges() {
 // ---------- Ethena ----------
 let learners = [];
 async function renderEthena() {
-  learners = [];
-  let cursor = "";
-  for (let i = 0; i < 20; i++) {
-    const p = await api("ethena/v1/learners?limit=100&cursor=" + encodeURIComponent(cursor));
-    const page = (p && p.data) || [];
-    learners = learners.concat(page);
-    if (!p || !p.hasMore || !page.length) break;
-    cursor = page[page.length - 1].id;
-  }
+  learners = await api("api/learners");
   filterLearners();
   const cs = await campaigns();
   $("et-campaigns").innerHTML = table(cs, [
@@ -184,36 +175,51 @@ async function renderEthena() {
     ["Who gets it", (c) => `<span class="muted">${esc(c.audience_text)}</span>`],
   ]);
 }
+const isDone = (e) => /COMPLETE/i.test(e.completionStatus || "");
+const isLate = (e) => !isDone(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||
+  (e.deadline && Date.parse(e.deadline) < Date.now()));
+function pills(l) {
+  return (l.enrollments || []).map((e) => {
+    const cls = isDone(e) ? "done" : isLate(e) ? "late" : "";
+    const tip = `${e.completionStatus || ""}, due ${String(e.deadline || "").slice(0, 10)}`;
+    return `<span class="tpill ${cls}" title="${esc(tip)}">${isLate(e) ? '<i class="dot"></i>' : ""}${esc(e.campaignName)}</span>`;
+  }).join(" ") || '<span class="muted">none</span>';
+}
+function dueNext(l) {
+  const d = (l.enrollments || []).filter((e) => !isDone(e) && e.deadline).map((e) => String(e.deadline).slice(0, 10)).sort();
+  return d[0] || "";
+}
+function attrString(l) {
+  return [l.country, l.state, l.isManager ? "manager" : null].filter(Boolean).join(" \u00b7 ");
+}
 function filterLearners() {
   const q = $("et-q").value.trim().toLowerCase();
-  const rows = learners.filter((l) => !q || [l.id, l.name, l.email, l.status, l.country, l.state, l.department, l.customCategory]
-    .some((v) => String(v || "").toLowerCase().includes(q)));
+  const rows = learners.filter((l) => !q || [l.id, l.name, l.email, l.status, l.country, l.state, l.department, l.customCategory,
+    ...(l.enrollments || []).map((e) => e.campaignName)].some((v) => String(v || "").toLowerCase().includes(q)));
   const box = $("et-table");
-  box.innerHTML = table(rows, [
-    ["Id", (l) => esc(l.id)], ["Name", (l) => esc(l.name)], ["Email", (l) => esc(l.email)],
-    ["Status", (l) => esc(l.status)], ["Country", (l) => esc(l.country)], ["State", (l) => esc(l.state)],
-    ["Manager", (l) => yesno(l.isManager)], ["Category", (l) => esc(l.customCategory)],
-  ], true, `No learners match "${q}"`);
+  box.innerHTML = '<div class="ethena-tbl">' + table(rows, [
+    ["Learner", (l) => `${esc(l.name)}<div class="help">${esc(l.id)}</div>`],
+    ["Status", (l) => `<span class="spill ${l.status === "ACTIVE" ? "act" : "term"}">${esc(l.status)}</span>`],
+    ["Training", pills], ["Due next", dueNext],
+    ["Attributes", (l) => `<span class="muted">${esc(attrString(l))}</span>`],
+  ].map((c) => c[0] === "Learner" ? ["Name", c[1]] : c), true, `No learners match "${q}"`) + "</div>";
   bindRows(box, rows, showLearner);
 }
 async function showLearner(l) {
   cur.learner = l;
-  const [e, cs] = await Promise.all([
-    api("ethena/v1/learner-training-campaigns?limit=100&learnerId=" + encodeURIComponent(l.id)), campaigns()]);
-  const names = Object.fromEntries(cs.map((c) => [c.id, c.campaignName]));
   $("et-detail").innerHTML = `<div class="cards"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>${esc(l.name)} (${esc(l.id)})</h4>` + kv([
     ["Email", l.email], ["Status", l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Reports to", l.managerLearnerId], ["Department", l.department],
     ["Category", l.customCategory], ["Worker type", l.workerType],
-  ]) + `</div><div class="card"><h4>Enrollments</h4>` + table((e && e.data) || [], [
-    ["Campaign", (x) => esc(names[x.trainingCampaignId] || x.trainingCampaignId)],
+  ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
+    ["Campaign", (x) => esc(x.campaignName)],
     ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
   ]) + "</div></div>";
 }
 
 // ---------- Sync ----------
 async function renderSync() {
-  await Promise.all([loadState(), loadQueue(), loadExplainCampaigns()]);
+  await Promise.all([loadState(), loadQueue(), loadDrift(), loadExplainCampaigns()]);
 }
 async function loadState() {
   const s = await api("api/state");
@@ -224,6 +230,13 @@ async function loadState() {
     ["Open queue items", s.open_queue ?? 0],
     ["Failed steps last run", s.failed_last_run ?? 0],
   ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
+}
+async function loadDrift() {
+  const d = await api("api/drift");
+  $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
+    '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync carries it across.</p>' +
+    (d.count ? '<ul class="changes drift-list">' + d.items.map((i) => `<li class="o-queued">${esc(i.sentence)}${i.in_queue ? ' <span class="muted">waiting for a person</span>' : ""}</li>`).join("") + "</ul>"
+      : '<p class="allgood">Everything Ethena knows matches Workday.</p>');
 }
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
@@ -258,7 +271,7 @@ async function runSync() {
       a.parentElement.querySelectorAll("[data-more]").forEach((x) => { x.hidden = false; });
       a.remove();
     }));
-    await Promise.all([loadState(), loadQueue()]);
+    await Promise.all([loadState(), loadQueue(), loadDrift()]);
     await refreshCards();
   } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = "Run sync"; }
 }
@@ -318,7 +331,7 @@ async function queueAct(b) {
       const item = (itemsCache.find((x) => String(x.id) === String(id)) || {});
       toast(`Mapped ${item.worker_name || "the person"} (${item.worker_id || "?"}) to ${r.learner_id}; ${OUT[r.outcome] || r.outcome}. Item closed.`);
     }
-    await Promise.all([loadQueue(), loadState()]);
+    await Promise.all([loadQueue(), loadState(), loadDrift()]);
     await refreshCards();
   } finally { b.disabled = false; b.classList.remove("busy"); }
 }
@@ -383,7 +396,7 @@ async function renderReport() {
 
 // ---------- Routing, reset, wiring ----------
 const RENDER = { workday: renderWorkday, ethena: renderEthena, sync: renderSync, report: renderReport };
-function current() { const t = location.hash.slice(1); return RENDER[t] ? t : "sync"; }
+function current() { const t = location.hash.slice(1); return RENDER[t] ? t : "workday"; }
 function route() {
   const t = current();
   document.body.className = "t-" + t;

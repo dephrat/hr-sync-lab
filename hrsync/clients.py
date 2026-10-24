@@ -109,6 +109,12 @@ class EthenaClient:
     def find_learners_by_email(self, email: str) -> list[dict]:
         return self._list("/learners", email=email)
 
+    def list_learners(self) -> list[dict]:
+        return self._list("/learners")
+
+    def list_all_enrollments(self) -> list[dict]:
+        return self._list("/learner-training-campaigns")
+
     def get_learner(self, learner_id: str) -> dict:
         return _send(self.http, "GET", f"/v1/learners/{learner_id}").json()
 

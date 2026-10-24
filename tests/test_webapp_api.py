@@ -155,3 +155,35 @@ def test_bad_worker_id_is_422(client):
     assert r.status_code == 422 and "error" in r.json()
     r = client.get("/api/workers/W%201%3B")
     assert r.status_code == 422 and "error" in r.json()
+
+
+def test_learners_have_enrollments(client):
+    rows = client.get("/api/learners").json()
+    assert len(rows) == 95
+    assert all(isinstance(r["enrollments"], list) for r in rows)
+    assert any(r["enrollments"] for r in rows)
+    assert {"campaignName", "completionStatus", "deadline"} <= set(
+        next(e for r in rows for e in r["enrollments"]))
+
+
+def test_drift_before_and_after_run(client):
+    d = client.get("/api/drift").json()
+    assert d["count"] >= 10 and d["count"] == len(d["items"])
+    kinds = {i["kind"] for i in d["items"]}
+    assert "terminated" in kinds
+    assert any(i["kind"] == "attrs" and i["worker_id"] == "W-1038" and "manager" in i["sentence"]
+               for i in d["items"])
+    assert all("—" not in i["sentence"] for i in d["items"])
+    client.post("/api/run")
+    after = client.get("/api/drift").json()
+    assert after["count"] == len(after["items"])
+    changed = {c["worker"]["id"] for c in
+               client.get("/workday/jobChanges", params={"limit": 100}).json()["data"]}
+    # Seeded drift with no job change behind it is invisible to the sync, so it stays.
+    for i in after["items"]:
+        assert (i["in_queue"] or i["kind"] in ("no_learner", "needs_rule")
+                or (i["kind"] == "attrs" and i["worker_id"] not in changed)), i
+    assert not {i["kind"] for i in after["items"]} & {"courses", "terminated"}
+    assert not any(i["worker_id"] == "W-1038" for i in after["items"])
+    open_q = {q["worker_id"] for q in client.get("/api/queue").json()}
+    assert {i["worker_id"] for i in after["items"] if i["in_queue"]} <= open_q

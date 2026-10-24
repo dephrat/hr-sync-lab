@@ -13,13 +13,13 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   <div class="wrap top-row">
     <strong class="brand">hr-sync-lab demo</strong>
     <span class="pill">mock systems, fake data</span>
-    <span class="hint">Try: promote someone in Workday, check Ethena, then Run sync.</span>
+    <span class="hint">Try: change someone's job in Workday, run Sync, then look at Ethena.</span>
     <button id="reset" class="plain">Reset demo</button>
   </div>
   <nav class="wrap tabs">
     <a href="#workday" data-tab="workday">Workday (mock)</a>
-    <a href="#ethena" data-tab="ethena">Ethena (mock)</a>
     <a href="#sync" data-tab="sync">Sync</a>
+    <a href="#ethena" data-tab="ethena">Ethena (mock)</a>
     <a href="#report" data-tab="report">Report</a>
   </nav>
 </header>
@@ -34,18 +34,9 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">Newest first. The next sync picks these up.</p>
     <div id="wd-changes"></div>
   </section>
-  <section id="tab-ethena" class="panel" data-accent="ethena">
-    <h2>Ethena (mock learning platform)</h2>
-    <p class="muted">What the training system believes right now. Read-only.</p>
-    <input id="et-q" class="search" placeholder="Filter by name, id, email, status, country, department or category">
-    <div id="et-detail"></div>
-    <div id="et-table"></div>
-    <h3>Campaigns</h3>
-    <p class="muted">Who gets each course, decided by attributes.</p>
-    <div id="et-campaigns"></div>
-  </section>
   <section id="tab-sync" class="panel" data-accent="sync">
     <h2>Sync</h2>
+    <div id="sy-drift" class="drift"></div>
     <div id="sy-state" class="strip"></div>
     <p><button id="sy-run" class="primary">Run sync</button></p>
     <div id="sy-result"><p class="muted">Press Run sync.</p></div>
@@ -66,6 +57,16 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     </form>
     <p class="muted">Clicking a person in the lookup fills the worker id.</p>
     <div id="ex-out"></div>
+  </section>
+  <section id="tab-ethena" class="panel" data-accent="ethena">
+    <h2>Ethena (mock learning platform)</h2>
+    <p class="muted">Learners and their training. Ethena only knows what it has been told.</p>
+    <input id="et-q" class="search" placeholder="Filter by learner, id, email, course or status">
+    <div id="et-detail"></div>
+    <div id="et-table"></div>
+    <h3>Courses and who gets them</h3>
+    <p class="muted">Who gets each course, decided by attributes.</p>
+    <div id="et-campaigns"></div>
   </section>
   <section id="tab-report" class="panel" data-accent="report">
     <h2>Report</h2>

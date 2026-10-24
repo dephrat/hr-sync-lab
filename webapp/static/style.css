@@ -72,3 +72,13 @@ form.jc { margin-top: 10px; }
 .g-updated .grphead { border-left-color: #1B7F5A; }
 .grpbody[hidden], .grp li[hidden] { display: none; }
 .legend { font-size: 12px; margin: 4px 0; }
+
+.drift-list li { border-left-color: #E0A100; background: #fffaf0; }
+.allgood { color: #1B7F5A; font-weight: 600; }
+.ethena-tbl td { padding-top: 9px; padding-bottom: 9px; }
+.ethena-tbl .help { margin-top: 0; }
+.spill { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #e8e3ff; color: #5B3DF5; }
+.spill.term { background: #eee; color: #777; }
+.tpill { display: inline-block; font-size: 12px; padding: 1px 9px; border-radius: 10px; background: #efeaff; color: #4a2fd0; margin: 1px 2px 1px 0; white-space: nowrap; }
+.tpill.done { background: #f0f0f0; color: #999; text-decoration: line-through; }
+.tpill .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #C62828; margin-right: 5px; }
