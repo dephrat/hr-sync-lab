@@ -199,43 +199,69 @@ async function loadState() {
     ["Failed steps last run", s.failed_last_run ?? 0],
   ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
 }
-const BUCKETS = ["changes_seen", "patched", "created", "terminated", "ok", "queued", "skipped", "failed"];
+const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
+  ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
+  ["unchanged", "Already correct", false, false]];
+const LEGEND = "Needs a person: the sync wrote nothing and is waiting for you. Updated: the sync changed Ethena. Already correct: nothing to do.";
+function groupHtml(key, title, open, items) {
+  const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= 10 ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
+  const more = items.length > 10 ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
+  return `<section class="grp g-${key}"><button type="button" class="grphead" aria-expanded="${open}">` +
+    `<span class="caret">${open ? "\u25be" : "\u25b8"}</span> ${esc(title)} (${items.length})</button>` +
+    `<div class="grpbody"${open ? "" : " hidden"}><ul class="changes">${items.map(li).join("")}</ul>${more}</div></section>`;
+}
 async function runSync() {
   const btn = $("sy-run");
   btn.disabled = true; btn.textContent = "Running...";
   try {
     const r = await api("api/run", { method: "POST" });
-    const s = r.summary || {};
-    const chips = BUCKETS.filter((k) => s[k]).map((k) => `<span class="chip">${esc(s[k])} ${esc(k.replace("_", " "))}</span>`).join("");
+    const s = r.summary || {}, changes = r.changes || [];
     const note = s.changes_seen > 0 && s.skipped === s.changes_seen
       ? '<div class="note">Nothing new since the last run. Re-running is safe: every change already handled was skipped.</div>' : "";
-    const list = (r.changes || []).map((c) => `<li class="o-${esc(c.outcome)}">${esc(c.sentence)}</li>`).join("");
-    $("sy-result").innerHTML = `<div class="chips">${chips || '<span class="chip">no changes seen</span>'}</div>${note}` +
-      (list ? `<ul class="changes">${list}</ul>` : '<p class="muted">No job changes to process.</p>');
+    const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
+      .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
+    $("sy-result").innerHTML = `<p class="muted legend">${esc(LEGEND)}</p>${note}` +
+      (secs || '<p class="muted">No job changes to process.</p>');
+    $("sy-result").querySelectorAll(".grphead").forEach((h) => h.addEventListener("click", () => {
+      const body = h.nextElementSibling, open = body.hidden;
+      body.hidden = !open; h.setAttribute("aria-expanded", open);
+      h.firstElementChild.textContent = open ? "\u25be" : "\u25b8";
+    }));
+    $("sy-result").querySelectorAll(".showall").forEach((a) => a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      a.parentElement.querySelectorAll("[data-more]").forEach((x) => { x.hidden = false; });
+      a.remove();
+    }));
     await Promise.all([loadState(), loadQueue()]);
   } finally { btn.disabled = false; btn.textContent = "Run sync"; }
 }
 function ageOf(ts) {
   const t = Date.parse(ts); if (!t) return "";
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
-  return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} days`;
+  if (m < 1440) return "today";
+  return m < 2880 ? "1 day" : `${Math.round(m / 1440)} days`;
+}
+function detailOf(q) {
+  const d = q.detail || "";
+  if (q.reason === "AMBIGUOUS_LEARNER" && d.includes("matches ")) return "Matches " + d.split("matches ")[1].trim();
+  if (q.reason.startsWith("UNKNOWN_")) { const m = d.match(/'([^']*)'/); return m ? `"${m[1]}"` : d; }
+  return d;
 }
 async function loadQueue() {
   const items = await api("api/queue?all=" + ($("sy-all").checked ? 1 : 0));
   const box = $("sy-queue");
   box.innerHTML = table(items, [
-    ["Id", (q) => esc(q.id)],
-    ["Reason", (q) => `${esc(q.reason)}<div class="help">${esc(q.reason_help)}</div>`],
-    ["Person", (q) => `${esc(q.worker_name)} (${esc(q.worker_id)})<div class="help">${esc(q.change_id)}</div>`],
-    ["Detail", (q) => esc(q.detail)], ["Age", (q) => esc(ageOf(q.created_at))],
-    ["Action", (q) => queueActions(q)],
+    ["Why", (q) => `${esc(q.reason_label)}<div class="help">${esc(q.reason)}</div>`],
+    ["Person", (q) => `${esc(q.worker_name)}<div class="help">${esc(q.worker_id)}</div>`],
+    ["Details", (q) => esc(detailOf(q))], ["Waiting", (q) => esc(ageOf(q.created_at))],
+    ["What you can do", (q) => queueActions(q)],
   ]);
   box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", guard(() => queueAct(b))));
 }
 function queueActions(q) {
-  if (q.status !== "open") return `${esc(q.status)}${q.resolution ? `<div class="help">${esc(q.resolution)}</div>` : ""}`;
+  if (q.status !== "open") return `${q.status === "resolved" ? "Resolved" : "Skipped"}${q.resolution ? `<div class="help">${esc(q.resolution)}</div>` : ""}`;
   const skip = `<input data-note="${esc(q.id)}" placeholder="note (optional)"> <button data-act="skip" data-id="${esc(q.id)}">Skip</button>`;
-  if (q.needs_rule) return '<div class="help">Needs a rules-table change: add this location or profile to hrsync/rules.default.json (owner: the automation builder). Skip if no training applies.</div>' + skip;
+  if (q.needs_rule) return '<div class="help">Add this location or job profile to the rules table (automation builder). Skip if no training applies.</div>' + skip;
   const cands = q.candidates || [];
   const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick a learner</option>${cands.map((c) =>
     `<option value="${esc(c.id)}">${esc([c.id, c.name, c.email].filter(Boolean).join(" · "))}</option>`).join("")}</select> ` : "";

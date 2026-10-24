@@ -35,6 +35,15 @@ REASON_HELP: dict[str, str] = {
 }
 
 
+REASON_LABEL: dict[str, str] = {
+    "UNKNOWN_LOCATION": "Location not in the rules table",
+    "UNKNOWN_PROFILE": "Job profile not in the rules table",
+    "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
+    "NO_LEARNER_MATCH": "No Ethena account for this person",
+    "ENROLLMENT_MISSING": "An expected course did not appear",
+}
+
+
 class ResolveIn(BaseModel):
     learner_id: str = Field(pattern=r"^[A-Za-z0-9]+$")
     note: str = ""
@@ -79,12 +88,33 @@ def _name(b, cache: dict, worker_id: str) -> str:
     return cache[worker_id]
 
 
-def _kv(detail: str) -> str:
+def _phrase(detail: str) -> str:
+    """Turn the patch diff (a JSON dict of changed attributes) into plain words."""
     try:
-        diff = json.loads(detail)
-        return ", ".join(f"{k}={json.dumps(v)}" for k, v in diff.items())
-    except (ValueError, AttributeError):
+        diff = dict(json.loads(detail))
+    except (ValueError, TypeError):
         return detail
+    parts = []
+    if "isManager" in diff:
+        parts.append("now a manager" if diff.pop("isManager") else "no longer a manager")
+    if "country" in diff:
+        text = f"country set to {diff.pop('country')}"
+        if "state" in diff:
+            text += f" ({diff.pop('state')})"
+        parts.append(text)
+    if "state" in diff:
+        v = diff.pop("state")
+        parts.append("state cleared" if v is None else f"state set to {v}")
+    if "customCategory" in diff:
+        v = diff.pop("customCategory")
+        parts.append("category cleared" if v is None else f"category set to {v}")
+    if "department" in diff:
+        parts.append(f"department now {diff.pop('department')}")
+    return ", ".join(parts) or "attributes updated"
+
+
+GROUP = {"queued": "needs_person", "patched": "updated", "created": "updated",
+         "terminated": "left", "ok": "unchanged", "skipped": "unchanged", "failed": "failed"}
 
 
 def _outcome(rows: list[dict]) -> str:
@@ -107,22 +137,22 @@ def _outcome(rows: list[dict]) -> str:
 def _sentence(name, wid, reason, outcome, rows) -> str:
     head = f"{name} ({wid}): {reason}."
     by = {r["action"]: r for r in rows}
-    verified = by.get("verify_enrollment", {}).get("detail", "")
+    trained = f"Training confirmed: {by.get('verify_enrollment', {}).get('detail', '')}."
     if outcome == "skipped":
-        return f"{head} Already processed, skipped."
+        return f"{head} Already handled in an earlier run."
     if outcome == "failed":
         bad = next(r for r in rows if r["outcome"] == "failed")
-        return f"{head} Failed at {bad['action']}: {bad['detail']}."
+        return f"{head} Failed at {bad['action']}: {bad['detail']}"
     if outcome == "queued":
-        return f"{head} Queued for review: {by['queue']['detail']}."
+        code, _, detail = by["queue"]["detail"].partition(": ")
+        return f"{head} Needs a person: {REASON_LABEL.get(code, code)}. {detail}"
     if outcome == "terminated":
-        return f"{head} Learner set to TERMINATED."
+        return f"{head} Marked as left the company; Ethena will assign no more training."
     if outcome == "created":
-        return f"{head} Created learner in Ethena. Verified: {verified}."
+        return f"{head} Added to Ethena. {trained}"
     if outcome == "patched":
-        return (f"{head} Set {_kv(by['patch_learner']['detail'])} in Ethena. "
-                f"Verified: {verified}.")
-    return f"{head} Attributes already correct. Verified: {verified}."
+        return f"{head} {_phrase(by['patch_learner']['detail'])}. {trained}"
+    return f"{head} Nothing to change. {trained}"
 
 
 @router.post("/run")
@@ -153,7 +183,7 @@ def _run_sync(request: Request):
         outcome = _outcome(rows)
         changes.append({
             "change_id": change_id, "worker_id": wid, "worker_name": name, "reason": reason,
-            "outcome": outcome,
+            "outcome": outcome, "group": GROUP[outcome],
             "actions": [{"action": r["action"], "outcome": r["outcome"], "detail": r["detail"]}
                         for r in rows],
             "sentence": _sentence(name, wid, reason, outcome, rows)})
@@ -184,6 +214,7 @@ def get_queue(request: Request, all: int = 0):
     names: dict = {}
     for it in items:
         it["worker_name"] = _name(b, names, it["worker_id"])
+        it["reason_label"] = REASON_LABEL.get(it["reason"], it["reason"])
         it["reason_help"] = REASON_HELP.get(it["reason"], "")
         it["needs_rule"] = it["reason"].startswith("UNKNOWN_")
         it["candidates"] = _candidates(b, it)

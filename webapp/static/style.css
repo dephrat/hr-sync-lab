@@ -64,3 +64,10 @@ form.jc { margin-top: 10px; }
 [id$="-detail"] { position: relative; }
 .closecard { position: absolute; top: 14px; right: 6px; border: none; background: none; font-size: 20px; line-height: 1; color: #777; padding: 2px 8px; }
 .closecard:hover { color: #000; }
+.grp { margin: 8px 0; }
+.grphead { width: 100%; text-align: left; font-weight: 600; background: var(--bg); border-left: 4px solid #999; }
+.g-failed .grphead { border-left-color: #C62828; color: #C62828; }
+.g-needs_person .grphead { border-left-color: #E0A100; }
+.g-updated .grphead { border-left-color: #1B7F5A; }
+.grpbody[hidden], .grp li[hidden] { display: none; }
+.legend { font-size: 12px; margin: 4px 0; }
