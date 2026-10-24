@@ -295,7 +295,7 @@ def test_rules_persist_and_reset_restores(settings, client):
 def test_needs_rule_sentence_points_at_translation_rules(client):
     items = client.get("/api/drift").json()["items"]
     s = [i["sentence"] for i in items if i["kind"] == "needs_rule"]
-    assert s and all("which has no translation rule yet" in x for x in s)
+    assert s and all("courses not specified" in x and "Translation rules" in x for x in s)
 
 
 def test_adding_vancouver_rule_clears_manual_review(client):

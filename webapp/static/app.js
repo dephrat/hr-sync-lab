@@ -448,7 +448,7 @@ const DRIFT_GROUPS = [
     "Run sync, then manual review."],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
     "Run sync to create the account(s)."],
-  ["needs_rule", "Office or job has no translation rule yet", false, (i) => !i.in_queue && i.kind === "needs_rule",
+  ["needs_rule", "Courses not specified for their office or job", false, (i) => !i.in_queue && i.kind === "needs_rule",
     "Run sync, then manual review."],
 ];
 async function loadDrift() {

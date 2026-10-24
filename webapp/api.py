@@ -25,13 +25,10 @@ WORKER_ID = r"^[A-Za-z0-9-]+$"
 
 # One sentence per reason code, taken from the "What happened" column of docs/runbook.md.
 REASON_HELP: dict[str, str] = {
-    "UNKNOWN_LOCATION": "This person works in an office that has no translation rule yet, so "
-                        "the sync does not know which country and province to give Ethena. "
-                        "Set the office under Translation rules, then run sync. Nothing was "
-                        "written to Ethena.",
-    "UNKNOWN_PROFILE": "This person has a job that has no translation rule yet, so the sync "
-                       "does not know whether to mark them a manager. Set the job under "
-                       "Translation rules, then run sync. Nothing was written to Ethena.",
+    "UNKNOWN_LOCATION": "No courses are specified for this person's office yet. Add the "
+                        "office under Translation rules, then run sync.",
+    "UNKNOWN_PROFILE": "No courses are specified for this person's job yet. Add the job "
+                       "under Translation rules, then run sync.",
     "AMBIGUOUS_LEARNER": "Two or more Ethena learners share the worker's email, so the sync "
                          "cannot tell which one is the real person.",
     "NO_LEARNER_MATCH": "No Ethena learner has the worker's email, and the sync was told not to "
@@ -42,8 +39,8 @@ REASON_HELP: dict[str, str] = {
 
 
 REASON_LABEL: dict[str, str] = {
-    "UNKNOWN_LOCATION": "Office has no translation rule yet",
-    "UNKNOWN_PROFILE": "Job has no translation rule yet",
+    "UNKNOWN_LOCATION": "Courses not specified for this office",
+    "UNKNOWN_PROFILE": "Courses not specified for this job",
     "AMBIGUOUS_LEARNER": "Two Ethena accounts share this email",
     "NO_LEARNER_MATCH": "No Ethena account for this person",
     "ENROLLMENT_MISSING": "An expected course did not appear",
@@ -412,13 +409,11 @@ def drift(request: Request):
             if attrs is None:
                 kind = "needs_rule"
                 if rules.missing(profile, loc) == "location":
-                    sentence = (f"works in the {loc} office, which has no translation rule "
-                                "yet, so the sync does not know which country and province "
-                                "to give Ethena.")
+                    sentence = (f"({loc} office): courses not specified for this office. "
+                                "Add it under Translation rules.")
                 else:
-                    sentence = (f"is a {w['jobProfile']['descriptor']}, which has no translation "
-                                "rule yet, so the sync does not know whether to mark them a "
-                                "manager.")
+                    sentence = (f"({w['jobProfile']['descriptor']}): courses not specified "
+                                "for this job. Add it under Translation rules.")
                 sentence = f"{name} {sentence}"
             else:
                 diff = {k: attrs[k] for k in ATTR_KEYS if learner.get(k) != attrs[k]}
