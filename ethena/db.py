@@ -67,7 +67,7 @@ def audience_matches(audience: dict, learner) -> bool:
     if "isManager" in audience and bool(learner["is_manager"]) != audience["isManager"]:
         return False
     for key, col in (("country", "country"), ("state", "state"),
-                     ("customCategory", "custom_category")):
+                     ("customCategory", "custom_category"), ("department", "department")):
         if key in audience and learner[col] not in audience[key]:
             return False
     return True

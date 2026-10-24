@@ -97,7 +97,7 @@ Edit `hrsync/rules.default.json` (or the file `RULES_PATH` points at). The locat
 }
 ```
 
-A location sets `country` and either `state` (US) or `customCategory` (Canadian province). A profile sets `isManager` and may set `customCategory`, which then wins over the location's (that is how warehouse roles get the warehouse safety campaign). If the new values should enroll people in a campaign, add or check the matching entry in `campaigns` and confirm with Enablement that the campaign audience in Ethena uses the same attributes. Then run `uv run pytest`, deploy the file, and resolve the queued items with `--map-learner`.
+A location sets `country` and either `state` (US) or `customCategory` (Canadian province). A profile sets only `isManager`. The warehouse safety campaign is not a rules setting: it targets the Workday department (Operations), which comes from the worker record, so Warehouse Associate and Supervisor get it in every office and keep their province course. If the new values should enroll people in a campaign, add or check the matching entry in `campaigns` and confirm with Enablement that the campaign audience in Ethena uses the same attributes. Then run `uv run pytest`, deploy the file, and resolve the queued items with `--map-learner`.
 
 ## Web page
 

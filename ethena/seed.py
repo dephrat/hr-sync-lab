@@ -32,7 +32,7 @@ CAMPAIGNS = [  # (id, course, name, audience)
     ("C000004", "Manager Fundamentals", "Manager Fundamentals", {"isManager": True}),
     ("C000005", "Data Privacy Essentials", "Data Privacy Essentials", {}),
     ("C000006", "Workplace Safety", "Workplace Safety (Warehouse)",
-     {"customCategory": ["WAREHOUSE"]}),
+     {"department": ["Operations"]}),
 ]
 
 
@@ -55,8 +55,6 @@ def seed(conn, hris_conn, rng_seed=7) -> dict:
     for i, w in enumerate(hris_conn.execute("SELECT * FROM workers ORDER BY id").fetchall()):
         lid = f"L{100001 + i}"
         country, state, cat = LOCATION_MAP[w["location"]]
-        if w["job_profile"].startswith("Warehouse"):
-            cat = "WAREHOUSE"
         learners[w["id"]] = lid
         _insert_learner(conn, lid, w["descriptor"], w["email"], country, state,
                         w["is_manager"], w["department"], cat)

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from hrsync import engine, store
 from hrsync import rules as rules_mod
-from hris.db import JOB_PROFILES, LOCATIONS, profile_descriptor
+from hris.db import JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, profile_descriptor
 from hrsync.engine import ATTR_KEYS
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
@@ -456,7 +456,6 @@ class OfficeIn(BaseModel):
 class JobIn(BaseModel):
     job: str
     isManager: bool | None = None
-    category: str | None = None
 
 
 def _audiences(b) -> list[tuple[str, dict]]:
@@ -477,7 +476,7 @@ def _office_courses(auds, row) -> list[str]:
     region = row.get("region")
     out = []
     for name, a in auds:
-        if not ({"country", "state"} & a.keys() or (a.get("customCategory") and "WAREHOUSE" not in a["customCategory"])):
+        if not ({"country", "state", "customCategory"} & a.keys()):
             continue
         if "country" in a and row["country"] not in a["country"]:
             continue
@@ -492,14 +491,15 @@ def _office_courses(auds, row) -> list[str]:
 
 
 def _job_courses(auds, row) -> list[str]:
-    """Role-based courses a job leads to: campaigns that key only on manager or category."""
+    """Role-based courses a job leads to: campaigns that key only on manager and department."""
     out = []
+    dept = PROFILE_DEPARTMENT.get(row["job"])
     for name, a in auds:
-        if not a or {"country", "state"} & a.keys():
+        if not a or not a.keys() <= {"isManager", "department"}:
             continue
         if "isManager" in a and row.get("isManager") is not a["isManager"]:
             continue
-        if "customCategory" in a and (row.get("category") or "none") not in a["customCategory"]:
+        if "department" in a and dept not in a["department"]:
             continue
         out.append(name)
     return out
@@ -544,12 +544,9 @@ def put_office(body: OfficeIn, request: Request):
 def put_job(body: JobIn, request: Request):
     if body.job not in JOB_PROFILES:
         return _err(422, f"unknown job {body.job!r}")
-    cat = None if body.category in (None, "none") else body.category
-    if cat is not None and cat not in _valid(rules_mod.CHOICES["categories"]):
-        return _err(422, f"unknown category {cat!r}")
     b = _bundle(request)
     with WRITE_LOCK:
         data = _rules_data(b)
-        rules_mod.set_job(data, body.job, body.isManager, cat)
+        rules_mod.set_job(data, body.job, body.isManager)
         rules_mod.save(b.rules_path, data)
     return rules_mod.job_row(data, body.job, profile_descriptor(body.job))

@@ -131,7 +131,7 @@ ADP and payroll, n8n (the queue notifications and review loop would be the n8n p
 ## Tests
 
 ```
-uv run pytest    # 84 tests
+uv run pytest    # 125 tests
 ```
 
 ## Docs

@@ -408,13 +408,12 @@ async function loadRules() {
   const job = (j) => `<tr data-job="${esc(j.job)}"><td>${esc(j.label)}` +
     (j.isManager === null ? ' <span class="tag-amber">not set</span>' : "") + "</td>" +
     `<td><select class="r-mgr" aria-label="Manager for ${esc(j.label)}">${opts(triple, j.isManager === null ? "" : j.isManager ? "yes" : "no", "not set")}</select></td>` +
-    `<td><select class="r-cat" aria-label="Category for ${esc(j.label)}"${j.isManager === null ? " disabled" : ""}>${opts(ch.categories, j.category || "none")}</select></td>` +
     `<td>${courses(j.courses)}</td></tr>`;
-  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="2">Ethena is told</th><th>So they get</th></tr>` +
-    `<tr class="sub"><th>${first}</th><th>${a}</th><th>${b}</th><th></th></tr></thead>`;
+  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th><th>So they get</th></tr>` +
+    `<tr class="sub"><th>${first}</th><th>${a}</th>${b ? `<th>${b}</th>` : ""}<th></th></tr></thead>`;
   $("sy-rules").innerHTML =
     `<h4>By office</h4><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table>` +
-    `<h4>By job</h4><table class="rules">${head("Job", "Manager", "Category")}<tbody>${r.jobs.map(job).join("")}</tbody></table>` +
+    `<h4>By job</h4><table class="rules">${head("Job", "Manager")}<tbody>${r.jobs.map(job).join("")}</tbody></table>` +
     `<p class="muted">Everyone also gets: ${(r.everyone || []).map(esc).join(", ") || "nothing else"}.</p>`;
   const saved = async (url, body) => {
     await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -429,11 +428,10 @@ async function loadRules() {
     region.addEventListener("change", send);
   });
   $("sy-rules").querySelectorAll("tr[data-job]").forEach((tr) => {
-    const mgr = tr.querySelector(".r-mgr"), cat = tr.querySelector(".r-cat");
+    const mgr = tr.querySelector(".r-mgr");
     const send = () => guard(saved)("api/rules/job", { job: tr.dataset.job,
-      isManager: mgr.value === "" ? null : mgr.value === "yes", category: cat.value });
+      isManager: mgr.value === "" ? null : mgr.value === "yes" });
     mgr.addEventListener("change", send);
-    cat.addEventListener("change", send);
   });
 }
 async function loadState() {

@@ -26,9 +26,11 @@ def test_unknown_location_or_profile(r):
     assert r.missing("Sales_Rep", "Toronto, ON") is None
 
 
-def test_warehouse_category_overrides_location(r):
-    a = r.attributes_for("Warehouse_Associate", "Minneapolis, MN", "Operations")
-    assert a["customCategory"] == "WAREHOUSE" and a["state"] == "MN" and a["isManager"] is False
+def test_warehouse_keeps_location_province_and_gets_department(r):
+    a = r.attributes_for("Warehouse_Associate", "Toronto, ON", "Operations")
+    assert a["customCategory"] == "ON" and a["department"] == "Operations" and a["isManager"] is False
+    assert r.expected_campaigns(a) == {"Harassment Prevention (Ontario)", "Data Privacy Essentials",
+                                       "Workplace Safety (Warehouse)"}
 
 
 def test_expected_campaigns(r):

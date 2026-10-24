@@ -45,12 +45,10 @@
       "isManager": false
     },
     "Warehouse_Associate": {
-      "isManager": false,
-      "customCategory": "WAREHOUSE"
+      "isManager": false
     },
     "Warehouse_Supervisor": {
-      "isManager": true,
-      "customCategory": "WAREHOUSE"
+      "isManager": true
     }
   },
   "campaigns": [
@@ -88,7 +86,7 @@
     {
       "campaignName": "Workplace Safety (Warehouse)",
       "when": {
-        "customCategory": "WAREHOUSE"
+        "department": "Operations"
       }
     }
   ]

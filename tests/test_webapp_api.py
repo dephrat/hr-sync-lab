@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -267,8 +269,10 @@ def test_get_rules_covers_everything(client):
     assert by["Austin, TX"]["region"] == "TX" and by["Vancouver, BC"]["country"] is None
     jobs = {j["job"]: j for j in r["jobs"]}
     assert jobs["Warehouse_Supervisor"]["isManager"] is True
-    assert jobs["Warehouse_Supervisor"]["category"] == "WAREHOUSE"
-    assert jobs["Sales_Rep"]["category"] is None and jobs["Sales_Rep"]["label"] == "Sales Rep"
+    assert "category" not in jobs["Warehouse_Supervisor"] and "categories" not in r["choices"]
+    assert sorted(jobs["Warehouse_Supervisor"]["courses"]) == ["Manager Fundamentals", "Workplace Safety (Warehouse)"]
+    assert jobs["Warehouse_Associate"]["courses"] == ["Workplace Safety (Warehouse)"]
+    assert jobs["Sales_Rep"]["courses"] == [] and jobs["Sales_Rep"]["label"] == "Sales Rep"
     assert {c["value"] for c in r["choices"]["regions"]["CAN"]} == {"ON", "BC", "AB", "QC"}
 
 
@@ -279,13 +283,12 @@ def test_put_rules_validation(client):
     assert put("office", {"office": "Atlantis", "country": "CAN", "region": "ON"}).status_code == 422
     assert put("office", {"office": "Vancouver, BC", "country": "FRA"}).status_code == 422
     assert put("job", {"job": "Nope", "isManager": True}).status_code == 422
-    assert put("job", {"job": "Sales_Rep", "isManager": True, "category": "x"}).status_code == 422
     ok = put("office", {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}).json()
     assert ok == {"office": "Vancouver, BC", "country": "CAN", "region": "BC"}
     cleared = put("office", {"office": "Vancouver, BC", "country": None, "region": "BC"}).json()
     assert cleared["country"] is None and cleared["region"] is None
-    job = put("job", {"job": "Sales_Rep", "isManager": True, "category": "WAREHOUSE"}).json()
-    assert job["isManager"] is True and job["category"] == "WAREHOUSE"
+    job = put("job", {"job": "Sales_Rep", "isManager": True}).json()
+    assert job == {"job": "Sales_Rep", "label": "Sales Rep", "isManager": True}
 
 
 def test_rules_persist_and_reset_restores(settings, client):
@@ -323,3 +326,18 @@ def test_adding_vancouver_rule_clears_manual_review(client):
     items = client.get("/api/drift").json()["items"]
     assert not [i for i in items if i["kind"] == "needs_rule"]
     assert not [i for i in items if i["worker_id"] in {c["worker_id"] for c in closed}]
+
+
+def test_toronto_warehouse_worker_gets_both_province_and_safety_courses(tmp_path):
+    s = Settings(hris_url="", ethena_url="", ethena_api_key="test-key",
+                 sync_db=str(tmp_path / "sync.db"), hris_db=str(tmp_path / "hris.db"),
+                 ethena_db=str(tmp_path / "ethena.db"), rules_path="hrsync/rules.default.json")
+    seed_all(s.hris_db, s.ethena_db)
+    c = TestClient(create_app(s))
+    h = sqlite3.connect(s.hris_db)
+    email = h.execute("SELECT email FROM workers WHERE job_profile LIKE 'Warehouse%' "
+                      "AND location='Toronto, ON' ORDER BY id LIMIT 1").fetchone()[0]
+    row = next(r for r in c.get("/api/learners").json() if r["email"] == email)
+    got = {e["campaignName"] for e in row["enrollments"]}
+    assert {"Harassment Prevention (Ontario)", "Workplace Safety (Warehouse)"} <= got
+    assert row["customCategory"] == "ON" and row["department"] == "Operations"

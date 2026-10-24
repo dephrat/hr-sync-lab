@@ -34,7 +34,7 @@ ORDER BY w.id;
 
 -- name: enrollments_with_audience
 SELECT en.id AS enrollment_id, en.learner_id, en.campaign_id, c.campaign_name,
-       c.audience, l.is_manager, l.country, l.state, l.custom_category
+       c.audience, l.is_manager, l.country, l.state, l.custom_category, l.department
 FROM ethena.enrollments en
 JOIN ethena.learners l ON l.id = en.learner_id
 JOIN ethena.campaigns c ON c.id = en.campaign_id

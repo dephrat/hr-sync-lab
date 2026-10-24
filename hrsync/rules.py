@@ -29,7 +29,7 @@ class Rules:
         prof, loc = self.profiles[job_profile_id], self.locations[location_descriptor]
         return {"isManager": prof["isManager"], "country": loc["country"],
                 "state": loc.get("state"),
-                "customCategory": prof.get("customCategory", loc.get("customCategory")),
+                "customCategory": loc.get("customCategory"),
                 "department": department}
 
     def expected_campaigns(self, attrs: LearnerAttrs) -> set[str]:
@@ -50,7 +50,6 @@ CHOICES = {
                 {"value": "TX", "label": "Texas"}, {"value": "CA", "label": "California"},
                 {"value": "WA", "label": "Washington"}],
     },
-    "categories": [{"value": "none", "label": "None"}, {"value": "WAREHOUSE", "label": "Warehouse"}],
 }
 
 
@@ -67,8 +66,7 @@ def office_row(data: dict, office: str) -> dict:
 def job_row(data: dict, job: str, label: str) -> dict:
     prof = data["profiles"].get(job)
     return {"job": job, "label": label,
-            "isManager": None if prof is None else prof.get("isManager"),
-            "category": None if prof is None else prof.get("customCategory")}
+            "isManager": None if prof is None else prof.get("isManager")}
 
 
 def set_office(data: dict, office: str, country, region) -> None:
@@ -81,14 +79,11 @@ def set_office(data: dict, office: str, country, region) -> None:
     data["locations"][office] = entry
 
 
-def set_job(data: dict, job: str, is_manager, category) -> None:
+def set_job(data: dict, job: str, is_manager) -> None:
     if is_manager is None:
         data["profiles"].pop(job, None)
         return
-    entry = {"isManager": is_manager}
-    if category is not None:
-        entry["customCategory"] = category
-    data["profiles"][job] = entry
+    data["profiles"][job] = {"isManager": is_manager}
 
 
 def save(path, data: dict) -> None:
