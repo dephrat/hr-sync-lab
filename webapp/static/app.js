@@ -454,8 +454,8 @@ async function badDay() {
   try {
     const r = await api("api/bad_day", { method: "POST" });
     if (r.already) { toast("The bad day is already here. Reset demo for a clean start."); return; }
-    toast("A bad day just happened. Look at the out-of-sync panel, then press Run sync.");
-    await Promise.all([loadState(), loadQueue(), loadDrift()]);
+    toast("A bad day just happened. Open the Sync tab to see what is out of sync.");
+    await route(); // refresh whichever tab is showing
     await refreshCards();
   } finally { btn.disabled = false; btn.classList.remove("busy"); }
 }

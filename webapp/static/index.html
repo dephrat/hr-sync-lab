@@ -14,6 +14,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <strong class="brand">hr-sync-lab demo</strong>
     <span class="pill">mock systems, fake data</span>
     <span class="hint">Try: change someone's job in Workday, run Sync, then look at Ethena.</span>
+    <button id="sy-bad" class="warn" title="Job changes Ethena has not heard about, a duplicate account, missing people, overdue training">Demo a bad day</button>
     <button id="reset" class="plain">Reset demo</button>
   </div>
   <nav class="wrap tabs">
@@ -57,8 +58,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <h2>Sync</h2>
     <div id="sy-drift" class="drift"></div>
     <div id="sy-state" class="strip"></div>
-    <p><button id="sy-run" class="primary">Run sync</button> <button id="sy-bad" class="warn">Demo a bad day</button></p>
-    <p class="muted">Injects a messy Monday: job changes Ethena has not heard about, a duplicate account, missing people, overdue training.</p>
+    <p><button id="sy-run" class="primary">Run sync</button></p>
     <h3>What the last run did</h3>
     <p class="muted">Every person the sync looked at, grouped by what happened to them.</p>
     <div id="sy-result"><p class="muted">Nothing yet. Press Run sync.</p></div>
