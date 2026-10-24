@@ -182,7 +182,7 @@ def _run_sync(request: Request):
     for change_id, rows in grouped.items():
         wid = rows[0]["worker_id"]
         if change_id.startswith(engine.RECON_PREFIX):
-            reason = "Reconcile"
+            reason = "Spot check"
         else:
             try:
                 reason = b.hris.get_job_change(change_id)["reason"]["descriptor"]

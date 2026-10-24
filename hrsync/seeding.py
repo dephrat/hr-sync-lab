@@ -36,13 +36,19 @@ def seed_all(hris_path, ethena_path, rng_seed=7) -> dict:
 
 def bad_day(hris_path, ethena_path, rng_seed=7) -> dict:
     """Inject the demo's bad day into a clean pair. A second call is a no-op returning
-    {"already": True}; the marker is any recorded job change."""
+    {"already": True}. The marker is a demo_flags row written by this function, so a
+    visitor's own hires and job changes do not block it; Reset recreates the database
+    and clears the flag."""
     h = hris_db.connect(hris_path)
     e = ethena_db.connect(ethena_path)
     try:
-        if h.execute("SELECT 1 FROM job_changes LIMIT 1").fetchone():
+        h.execute("CREATE TABLE IF NOT EXISTS demo_flags (name TEXT PRIMARY KEY)")
+        if h.execute("SELECT 1 FROM demo_flags WHERE name='bad_day'").fetchone():
             return {"already": True}
-        n = h.execute("SELECT COUNT(*) FROM workers").fetchone()[0]
+        h.execute("INSERT INTO demo_flags VALUES ('bad_day')")
+        # Plan against the seeded population, not the current count, so a visitor's
+        # hires do not change which workers the bad day picks.
+        n = h.execute("SELECT COUNT(*) FROM workers WHERE id <= 'W-1100'").fetchone()[0]
         plans, vancouver = hris_seed.plan_bad_day(n, rng_seed)
         changed = {p["worker_id"] for p in plans}
         terminated = [p["worker_id"] for p in plans if p["reason"] == "Termination"]

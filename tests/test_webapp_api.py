@@ -202,7 +202,7 @@ def test_drift_before_and_after_run(client):
 def test_run_clears_pending_drift(client):
     body = client.post("/api/run").json()
     assert body["summary"]["changes_seen"] > 12
-    assert any(c["reason"] == "Reconcile" for c in body["changes"])
+    assert any(c["reason"] == "Spot check" for c in body["changes"])
     after = client.get("/api/drift").json()
     assert not [i for i in after["items"]
                 if not i["in_queue"] and i["kind"] in ("attrs", "courses", "terminated")]

@@ -62,6 +62,15 @@ def test_bad_day_endpoint_then_already_then_reset(client):
     assert client.post("/api/bad_day").json()["changes"] == 12
 
 
+def test_bad_day_works_after_a_visitor_hire(client):
+    client.post("/api/reset")
+    r = client.post("/workday/workers", json={"name": "Visitor Hire", "jobProfile": "Sales_Rep",
+                                               "location": "Toronto, ON"})
+    assert r.status_code == 201
+    assert client.post("/api/bad_day").json()["changes"] == 12
+    assert client.post("/api/bad_day").json() == {"already": True}
+
+
 def test_report_after_bad_day_before_run(client):
     client.post("/api/reset")
     client.post("/api/bad_day")
