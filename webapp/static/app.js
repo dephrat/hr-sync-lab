@@ -88,6 +88,25 @@ let campaignCache = null;
 async function campaigns() { if (!campaignCache) campaignCache = await api("api/campaigns"); return campaignCache; }
 
 // ---------- Workday ----------
+function initHire() {
+  const f = $("wd-hire");
+  f.jobProfile.insertAdjacentHTML("beforeend", options(PROFILES, (p) => p.replace(/_/g, " ")));
+  f.location.insertAdjacentHTML("beforeend", options(LOCATIONS));
+  const btn = f.querySelector("button");
+  const check = () => { btn.disabled = !(f.name.value.trim() && f.jobProfile.value && f.location.value); };
+  ["input", "change"].forEach((ev) => f.addEventListener(ev, check));
+  f.addEventListener("submit", guard(async (ev) => {
+    ev.preventDefault();
+    btn.disabled = true; btn.classList.add("busy");
+    try {
+      const w = await api("workday/workers", { method: "POST",
+        body: { name: f.name.value.trim(), jobProfile: f.jobProfile.value, location: f.location.value } });
+      toast(`Hired ${w.descriptor} (${w.id}). Run Sync to create their Ethena account.`);
+      f.reset();
+      await Promise.all([loadWorkers(), loadChanges()]);
+    } finally { btn.classList.remove("busy"); check(); }
+  }));
+}
 async function renderWorkday() {
   await Promise.all([loadWorkers(), loadChanges()]);
 }
@@ -214,7 +233,19 @@ async function showLearner(l) {
   ]) + `</div><div class="card"><h4>Enrollments</h4>` + table(l.enrollments || [], [
     ["Campaign", (x) => esc(x.campaignName)],
     ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
+    ["", (x) => isDone(x) ? "" : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
+      `<button type="button" class="mark" data-ltc="${esc(x.id)}" data-course="${esc(x.campaignName)}">Mark complete</button>`],
   ]) + "</div></div>";
+  $("et-detail").querySelectorAll("button.mark").forEach((b) => b.addEventListener("click", guard(async () => {
+    b.disabled = true; b.classList.add("busy");
+    try {
+      await api("ethena/v1/learner-training-campaigns/" + encodeURIComponent(b.dataset.ltc) + "/complete", { method: "POST" });
+      learners = await api("api/learners");
+      filterLearners();
+      await showLearner(learners.find((x) => x.id === l.id) || l);
+      toast(`${b.dataset.course} marked complete for ${l.name}.`);
+    } finally { b.disabled = false; b.classList.remove("busy"); }
+  })));
 }
 
 // ---------- Sync ----------
@@ -440,6 +471,7 @@ $("sy-all").addEventListener("change", guard(loadQueue));
 $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("sy-explain").addEventListener("submit", guard(explain));
 $("rp-refresh").addEventListener("click", guard(renderReport));
+initHire();
 route();
 
 async function refreshCards() {

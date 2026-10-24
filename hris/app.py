@@ -1,11 +1,14 @@
 """Mock Workday staffing API (FastAPI)."""
+import re
+from datetime import date
 from typing import Literal
 
+from fastapi.responses import JSONResponse
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from hris.db import (DEPARTMENTS, JOB_PROFILES, LOCATIONS, apply_job_change, connect,
-                     location_id, profile_descriptor, utc_now)
+from hris.db import (DEPARTMENTS, JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, apply_job_change,
+                     connect, is_manager_profile, location_id, profile_descriptor, utc_now)
 
 
 class JobChangeIn(BaseModel):
@@ -17,6 +20,12 @@ class JobChangeIn(BaseModel):
     businessTitle: str | None = None
     supervisoryOrganization: str | None = None
     completedDate: str | None = None  # test hook: pin the completion timestamp
+
+
+class HireIn(BaseModel):
+    name: str
+    jobProfile: str
+    location: str
 
 
 def _ref(id_, descriptor):
@@ -84,6 +93,38 @@ def create_app(db_path) -> FastAPI:
         rows = conn.execute("SELECT * FROM workers ORDER BY id LIMIT ? OFFSET ?",
                             (limit, offset)).fetchall()
         return {"total": total, "data": [worker_json(r) for r in rows]}
+
+    @app.post("/workers", status_code=201)
+    def hire_worker(body: HireIn, conn=Depends(get_conn)):
+        """Workday owns people: creates an active worker and a completed Hire job change."""
+        name = " ".join(body.name.split())
+        if not 2 <= len(name) <= 80 or len(name.split()) < 2:
+            raise HTTPException(422, "name must be 2 to 80 characters with at least two words")
+        if body.jobProfile not in JOB_PROFILES:
+            raise HTTPException(422, f"unknown jobProfile {body.jobProfile}")
+        if body.location not in LOCATIONS:
+            raise HTTPException(422, f"unknown location {body.location}")
+        top = conn.execute("SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) FROM workers").fetchone()[0]
+        num = (top or 1000) + 1
+        wid = f"W-{num:04d}"
+        words = [re.sub(r"[^a-z]", "", w.lower()) for w in name.split()]
+        words = [w for w in words if w]
+        if len(words) < 2:
+            raise HTTPException(422, "name must contain letters in at least two words")
+        email = f"{words[0]}.{words[-1]}.{num}@example.com"
+        today = date.today().isoformat()
+        profile = body.jobProfile
+        conn.execute(
+            "INSERT INTO workers (id, descriptor, email, business_title, is_manager, hire_date,"
+            " job_profile, location, department, position_id, status_date)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (wid, name, email, profile_descriptor(profile), int(is_manager_profile(profile)),
+             today, profile, body.location, PROFILE_DEPARTMENT[profile], f"P-{num}", today))
+        apply_job_change(conn, worker_id=wid, effective_date=today, reason="Hire",
+                         completed_date=utc_now(), job_profile=profile, location=body.location,
+                         department=PROFILE_DEPARTMENT[profile])
+        r = conn.execute("SELECT * FROM workers WHERE id=?", (wid,)).fetchone()
+        return JSONResponse(worker_json(r), status_code=201)
 
     @app.get("/workers/{worker_id}")
     def get_worker(worker_id: str, conn=Depends(get_conn)):

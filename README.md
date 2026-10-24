@@ -55,6 +55,8 @@ The story takes six clicks:
 5. Check Ethena again: his attributes changed and he is enrolled in Manager Fundamentals.
 6. Resolve a queue item in the Sync tab, then read the Report tab to see the drift that is left.
 
+You can also hire someone in Workday and mark training complete in Ethena, to see the sync leave each system's own data alone.
+
 Reset demo puts all three databases back to the seed.
 
 ## Quickstart

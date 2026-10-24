@@ -347,7 +347,7 @@ def _enrollment_map(b) -> tuple[list[dict], dict]:
     by_learner: dict[str, list[dict]] = {}
     for e in b.learning.list_all_enrollments():
         by_learner.setdefault(e["learnerId"], []).append({
-            "campaignName": camps.get(e["trainingCampaignId"], e["trainingCampaignId"]),
+            "id": e["id"], "campaignName": camps.get(e["trainingCampaignId"], e["trainingCampaignId"]),
             "completionStatus": e.get("completionStatus"), "deadline": e.get("deadline")})
     return b.learning.list_learners(), by_learner
 

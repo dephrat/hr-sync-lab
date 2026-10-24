@@ -45,4 +45,4 @@ One container on the VPS (`/docker/hrsync`), Traefik route `Host(hrsync.ephrat.a
 
 ## Out of scope
 
-Hand-editing Ethena from the page; editing the rules table from the page; a Claude "Ask" box (possible second step); mobile layout polish; accounts.
+Editing Ethena's learner attributes from the page (hiring in Workday and marking training complete in Ethena are in); editing the rules table from the page; a Claude "Ask" box (possible second step); mobile layout polish; accounts.

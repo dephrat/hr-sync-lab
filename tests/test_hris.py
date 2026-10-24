@@ -100,3 +100,27 @@ def test_noop_change_rejected_unless_termination(client):
         assert r.status_code == 422 and "must change" in r.json()["detail"]
     assert client.post("/jobChanges", json={"workerId": "W-1002", "effectiveDate": "2026-10-01",
                                             "reason": "Termination"}).status_code == 201
+
+
+def test_hire_creates_worker_and_hire_change(client):
+    r = client.post("/workers", json={"name": "Ana  O'Brien-Lee", "jobProfile": "Sales_Team_Lead",
+                                      "location": "Toronto, ON"})
+    assert r.status_code == 201
+    w = r.json()
+    assert w["id"] == "W-1101" and w["descriptor"] == "Ana O'Brien-Lee"
+    assert w["primaryWorkEmail"] == "ana.obrienlee.1101@example.com"
+    assert w["isManager"] is True and w["workerStatus"]["active"] is True
+    assert w["primarySupervisoryOrganization"]["id"] == "Sales"
+    assert client.get("/workers/W-1101").status_code == 200
+    changes = client.get("/jobChanges", params={"limit": 100}).json()["data"]
+    mine = [c for c in changes if c["worker"]["id"] == "W-1101"]
+    assert len(mine) == 1 and mine[0]["reason"]["id"] == "Hire"
+    assert mine[0]["completedDate"]
+
+
+def test_hire_rejects_bad_input(client):
+    ok = {"name": "Ana Lee", "jobProfile": "Sales_Rep", "location": "Toronto, ON"}
+    assert client.post("/workers", json={**ok, "jobProfile": "Astronaut"}).status_code == 422
+    assert client.post("/workers", json={**ok, "location": "Mars"}).status_code == 422
+    assert client.post("/workers", json={**ok, "name": "Madonna"}).status_code == 422
+    assert client.get("/workers").json()["total"] == 100

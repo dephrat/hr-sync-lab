@@ -69,7 +69,8 @@ def enrollment_json(r) -> dict:
 def module_json(r) -> dict:
     return {"id": r["id"], "learnerId": r["learner_id"], "learnerTrainingCampaignId": r["enrollment_id"],
             "moduleName": r["module_name"], "lengthInMinutes": r["length_in_minutes"],
-            "status": r["completion_status"], "assignedAt": r["assigned_at"]}
+            "status": "USER_COMPLETED" if r["completion_status"] == "COMPLETED" else r["completion_status"],
+            "assignedAt": r["assigned_at"]}
 
 
 _NOT_NULL = {"name", "email", "status", "isManager", "language"}
@@ -208,6 +209,15 @@ def create_app(db_path, api_key="test-key") -> FastAPI:
     @r.get("/learner-training-campaigns/{ltc_id}")
     def get_enrollment(ltc_id: str, conn=Depends(get_conn)):
         return one(conn, "enrollments", ltc_id, "learner training campaign", enrollment_json)
+
+    @r.post("/learner-training-campaigns/{ltc_id}/complete", status_code=204)
+    def complete_enrollment(ltc_id: str, conn=Depends(get_conn)):
+        """Ethena owns completions: marks the enrollment COMPLETED (its module then reads
+        USER_COMPLETED). The sync never writes this, so the two cannot conflict. Idempotent."""
+        one(conn, "enrollments", ltc_id, "learner training campaign", enrollment_json)
+        conn.execute("UPDATE enrollments SET completion_status='COMPLETED' WHERE id=?", (ltc_id,))
+        conn.commit()
+        return Response(status_code=204)
 
     @r.get("/learner-training-modules")
     def list_modules(learnerId: str | None = None, limit: int = Query(25, ge=1, le=100),

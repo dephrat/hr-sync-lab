@@ -199,3 +199,27 @@ def test_run_clears_pending_drift(client):
     after = client.get("/api/drift").json()
     assert not [i for i in after["items"]
                 if not i["in_queue"] and i["kind"] in ("attrs", "courses", "terminated")]
+
+
+def test_hire_then_sync_adds_to_ethena(client):
+    r = client.post("workday/workers", json={"name": "Priya Nair", "jobProfile": "Software_Engineer",
+                                             "location": "Toronto, ON"})
+    assert r.status_code == 201
+    wid = r.json()["id"]
+    assert any(i["worker_id"] == wid and i["kind"] == "no_learner"
+               for i in client.get("/api/drift").json()["items"])
+    sentences = [c["sentence"] for c in client.post("/api/run").json()["changes"] if wid in c["sentence"]]
+    assert any("Added to Ethena" in x for x in sentences)
+    assert all(i["worker_id"] != wid for i in client.get("/api/drift").json()["items"])
+
+
+def test_completing_seeded_overdue_clears_report(client):
+    auth = {"Authorization": "Basic " + __import__("base64").b64encode(b"web:test-key").decode()}
+    late = client.get("ethena/v1/learner-training-campaigns",
+                      params={"completionStatus": "PAST_DEADLINE", "limit": 100}, headers=auth).json()["data"]
+    assert len(late) == 2
+    for e in late:
+        assert client.post(f"ethena/v1/learner-training-campaigns/{e['id']}/complete",
+                           headers=auth).status_code == 204
+    secs = {s["name"]: s for s in client.get("/api/report").json()["sections"]}
+    assert secs["overdue_by_department"]["rows"] == []

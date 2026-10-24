@@ -28,6 +28,11 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <div class="pbar"><span class="pname">Workday</span><span class="mockchip">mock</span></div>
     <h2>Workday (mock HRIS)</h2>
     <p class="muted">Click a name to change someone's job. Then watch the change sync to Ethena.</p>
+    <form id="wd-hire" class="jc row"><strong>Hire:</strong>
+      <input name="name" placeholder="Full name" size="22" maxlength="80" autocomplete="off">
+      <select name="jobProfile"><option value="">job profile</option></select>
+      <select name="location"><option value="">location</option></select>
+      <button class="primary" disabled>Hire</button></form>
     <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
     <div id="wd-detail"></div>
     <div id="wd-table"></div>
@@ -63,7 +68,7 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   <section id="tab-ethena" class="panel theme-ethena" data-accent="ethena">
     <div class="pbar"><span class="pname">Ethena</span><span class="mockchip">mock</span></div>
     <h2>Ethena (mock learning platform)</h2>
-    <p class="muted">Learners and their training. Ethena only knows what it has been told.</p>
+    <p class="muted">Ethena owns training. People-facts arrive from Workday through the sync.</p>
     <input id="et-q" class="search" placeholder="Filter by learner, id, email, course or status">
     <div id="et-detail"></div>
     <div id="et-table"></div>

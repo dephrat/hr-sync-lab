@@ -125,3 +125,25 @@ def test_format_and_enum_validation(client):
         assert client.post("/v1/learners", json={"name": "x", "email": "x@e.com", **b}).status_code == 422, b
     assert client.patch(f"/v1/learners/{lid}", json={"id": lid, "status": "DEACTIVATED"}).status_code == 422
     assert client.post("/v1/learners", json={"name": "x", "email": "x@e.com", "status": "DEACTIVATED"}).status_code == 200
+
+
+def _first_open_enrollment(client):
+    lid = next(x["id"] for x in all_learners(client) if x["status"] == "ACTIVE")
+    ltcs, _ = campaign_names(client, lid)
+    return lid, ltcs[0]["id"]
+
+
+def test_complete_enrollment(client):
+    lid, ltc = _first_open_enrollment(client)
+    assert client.post(f"/v1/learner-training-campaigns/{ltc}/complete").status_code == 204
+    assert client.get(f"/v1/learner-training-campaigns/{ltc}").json()["completionStatus"] == "COMPLETED"
+    mods = client.get("/v1/learner-training-modules", params={"learnerId": lid}).json()["data"]
+    assert next(m for m in mods if m["learnerTrainingCampaignId"] == ltc)["status"] == "USER_COMPLETED"
+    assert client.post(f"/v1/learner-training-campaigns/{ltc}/complete").status_code == 204
+    assert client.get(f"/v1/learner-training-campaigns/{ltc}").json()["completionStatus"] == "COMPLETED"
+
+
+def test_complete_unknown_is_404_and_needs_auth(client):
+    assert client.post("/v1/learner-training-campaigns/LTC999999/complete").status_code == 404
+    _, ltc = _first_open_enrollment(client)
+    assert client.post(f"/v1/learner-training-campaigns/{ltc}/complete", auth=None).status_code == 401

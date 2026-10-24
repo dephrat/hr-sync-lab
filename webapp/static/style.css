@@ -127,3 +127,9 @@ form.jc { margin-top: 10px; }
 .theme-sync .pname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1B7F5A; font-size: 15px; }
 .theme-sync .pnote { font-size: 12px; color: var(--muted); }
 @media (max-width: 900px) { .pbar { padding: 8px 12px; margin-left: -20px; margin-right: -20px; } .theme-ethena { border-radius: 10px; } }
+
+#wd-hire { margin: 0 0 12px; }
+#wd-hire button[disabled] { opacity: .5; cursor: not-allowed; }
+.late-txt { color: #C62828; font-size: 12px; font-weight: 600; }
+.theme-ethena button.mark { background: #fff; color: var(--et-ink); border: 1px solid var(--et-ink); font-size: 12px; padding: 2px 10px; cursor: pointer; }
+.theme-ethena button.mark:hover { background: var(--et-ink); color: #fff; }
