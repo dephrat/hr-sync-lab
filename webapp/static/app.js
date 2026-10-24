@@ -392,16 +392,21 @@ async function loadState() {
   ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
 }
 const DRIFT_GROUPS = [
-  ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind)],
-  ["waiting", "Waiting for manual review", true, (i) => i.in_queue],
-  ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous"],
-  ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner"],
-  ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule"],
+  ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind),
+    "Run sync updates Ethena."],
+  ["waiting", "Waiting for manual review", true, (i) => i.in_queue,
+    "Resolve or skip each one under Needs manual review."],
+  ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous",
+    "Run sync sends this to manual review, where you pick the right account."],
+  ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner",
+    "Run sync creates the account."],
+  ["needs_rule", "Location or job profile not in the rules table", false, (i) => !i.in_queue && i.kind === "needs_rule",
+    "Run sync sends these to manual review. The lasting fix is adding the location or job profile to the rules table."],
 ];
 async function loadDrift() {
   const d = await api("api/drift");
   const items = (d.items || []).map((i) => ({ ...i, outcome: i.in_queue ? "ok" : "queued" }));
-  const secs = DRIFT_GROUPS.map(([k, title, open, pick]) => [k, title, open, items.filter(pick)])
+  const secs = DRIFT_GROUPS.map(([k, title, open, pick, todo]) => [k, title, open, items.filter(pick), todo])
     .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
   $("sy-drift").innerHTML = `<h3>Out of sync right now (${d.count})</h3>` +
     '<p class="muted">What Workday knows that Ethena has not been told yet. Run sync makes Ethena match Workday for everyone; what is left needs a person or a rules-table entry.</p>' +
@@ -423,11 +428,12 @@ function bindGroups(root) {
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
   ["unchanged", "Checked, nothing to change", false, false]];
-function groupHtml(key, title, open, items) {
+function groupHtml(key, title, open, items, todo) {
   const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= 10 ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
   const more = items.length > 10 ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
   return `<section class="grp g-${key}"><button type="button" class="grphead" aria-expanded="${open}">` +
-    `<span class="caret">${open ? "\u25be" : "\u25b8"}</span> ${esc(title)} (${items.length})</button>` +
+    `<span class="caret">${open ? "\u25be" : "\u25b8"}</span> ${esc(title)} (${items.length})` +
+    (todo ? ` <em class="grptodo">${esc(todo)}</em>` : "") + "</button>" +
     `<div class="grpbody"${open ? "" : " hidden"}><ul class="changes">${items.map(li).join("")}</ul>${more}</div></section>`;
 }
 async function runSync() {
