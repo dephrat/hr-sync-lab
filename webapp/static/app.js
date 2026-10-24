@@ -232,7 +232,7 @@ async function loadState() {
   ].map(([k, v]) => `<div><b>${esc(k)}</b>${esc(v)}</div>`).join("");
 }
 const DRIFT_GROUPS = [
-  ["pending", "Changed in Workday, not yet in Ethena", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind)],
+  ["pending", "Ethena differs from Workday", true, (i) => !i.in_queue && ["attrs", "courses", "terminated"].includes(i.kind)],
   ["waiting", "Waiting for a person in the review queue", true, (i) => i.in_queue],
   ["ambiguous", "Two Ethena accounts share one email", true, (i) => !i.in_queue && i.kind === "ambiguous"],
   ["no_learner", "In Workday, no Ethena account", false, (i) => !i.in_queue && i.kind === "no_learner"],
