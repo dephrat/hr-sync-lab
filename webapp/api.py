@@ -300,13 +300,15 @@ def worker_detail(request: Request, worker_id: str = Path(pattern=WORKER_ID)):
 
 
 def _audience_text(aud: dict) -> str:
+    # The stored rule as field = value, unreworded, so what the page shows is the data.
     parts = []
-    for key in ("country", "state", "customCategory"):
-        if aud.get(key):
-            parts.append(", ".join(aud[key]))
-    if "isManager" in aud:
-        parts.append("managers" if aud["isManager"] else "non-managers")
-    return " + ".join(parts) or "everyone"
+    for key, val in aud.items():
+        if isinstance(val, list):
+            val = ", ".join(map(str, val))
+        elif isinstance(val, bool):
+            val = "true" if val else "false"
+        parts.append(f"{key} = {val}")
+    return " \u00b7 ".join(parts) or "everyone (no rules)"
 
 
 @router.get("/campaigns")

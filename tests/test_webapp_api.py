@@ -102,9 +102,9 @@ def test_campaigns_audience_text(client):
     camps = client.get("/api/campaigns").json()
     assert len(camps) == 6
     by = {c["campaignName"]: c["audience_text"] for c in camps}
-    assert by["Manager Fundamentals"] == "managers"
-    assert by["Data Privacy Essentials"] == "everyone"
-    assert by["Harassment Prevention (US Employees)"] == "USA + non-managers"
+    assert by["Manager Fundamentals"] == "isManager = true"
+    assert by["Data Privacy Essentials"] == "everyone (no rules)"
+    assert by["Harassment Prevention (US Employees)"] == "country = USA \u00b7 isManager = false"
 
 
 def test_explain_absent_worker_no_change(client):
