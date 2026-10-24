@@ -1,4 +1,5 @@
 """The demo web app: static page, JSON endpoints, and both mock systems mounted in-process."""
+import hashlib
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hrsync import store
@@ -27,6 +28,14 @@ def _count(path, table) -> int:
         conn.close()
 
 
+def _asset_version() -> str:
+    """Short hash of the page's JS and CSS; changes whenever either file changes."""
+    h = hashlib.sha1()
+    for name in ("app.js", "style.css"):
+        h.update((STATIC / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
 def create_app(settings: Settings) -> FastAPI:
     bundle = make_bundle(settings)
     app = FastAPI(title="hr-sync-lab demo", docs_url=None, redoc_url=None, openapi_url=None)
@@ -44,7 +53,10 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC / "index.html", media_type="text/html")
+        # Stamp the asset URLs with a content hash so browsers (Safari especially) fetch new
+        # JS and CSS after every deploy without a hard reload. The HTML itself is never cached.
+        html = (STATIC / "index.html").read_text().replace("__ASSET_VERSION__", _asset_version())
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/state")
     def state():

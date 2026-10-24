@@ -88,6 +88,8 @@ def test_index_has_tabs_and_no_em_dash(client):
     for title in ("Workday (mock)", "Ethena (mock)", "Sync", "Report"):
         assert title in html
     assert "—" not in html
+    assert "__ASSET_VERSION__" not in html
+    assert 'static/app.js?v=' in html and 'static/style.css?v=' in html
 
 
 def test_index_has_trailing_slash_redirect_script(client):
