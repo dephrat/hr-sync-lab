@@ -25,25 +25,35 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
 </header>
 <main class="wrap">
   <section id="tab-workday" class="panel theme-workday" data-accent="workday">
-    <div class="pbar"><span class="pname">Workday</span><span class="mockchip">mock</span></div>
-    <h2>Workday (mock HRIS)</h2>
-    <p class="muted">Click a name to change someone's job. Then watch the change sync to Ethena.</p>
-    <form id="wd-hire" class="jc row"><strong>Hire:</strong>
-      <input name="name" placeholder="Full name" size="22" maxlength="80" autocomplete="off">
-      <select name="jobProfile"><option value="">job profile</option></select>
-      <select name="location"><option value="">location</option></select>
-      <input name="businessTitle" placeholder="Business title (optional)" size="24" maxlength="80" autocomplete="off">
-      <button class="primary" disabled>Hire</button></form>
-    <div id="wd-approvals" class="card approvals" hidden></div>
-    <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
-    <div id="wd-detail"></div>
-    <div id="wd-table"></div>
-    <h3>Recent job changes</h3>
-    <p class="muted">Approved changes, newest first. The next sync picks these up.</p>
-    <div id="wd-changes"></div>
+    <div class="pbar wd-bar">
+      <span class="wd-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h14M3 10h14M3 15h14"/></svg></span>
+      <span class="pname">Workday</span><span class="mockchip">mock</span>
+      <label class="wd-search"><span class="sr">Search workers</span>
+        <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department"></label>
+      <a href="#wd-approvals" class="wd-ico wd-inbox" aria-label="Approvals inbox"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l2-7h10l2 7v5H3z"/><path d="M3 11h4l1 2h4l1-2h4"/></svg><span id="wd-inbox-n" class="count" hidden></span></a>
+      <span class="wd-avatar" aria-hidden="true">HR</span>
+    </div>
+    <div class="wd-body">
+      <div class="wd-main">
+        <h2>Workers</h2>
+        <p class="muted">Click a name to change someone's job. Then watch the change sync to Ethena.</p>
+        <form id="wd-hire" class="jc hire"><strong class="hire-t">Hire</strong>
+          <label>Full name<input name="name" placeholder="Full name" maxlength="80" autocomplete="off"></label>
+          <label>Business title (optional)<input name="businessTitle" placeholder="Business title" maxlength="80" autocomplete="off"></label>
+          <label>Job profile<select name="jobProfile"><option value="">Select job profile</option></select></label>
+          <label>Location<select name="location"><option value="">Select location</option></select></label>
+          <div class="hire-acts"><button class="primary" disabled>Hire</button></div></form>
+        <div id="wd-detail"></div>
+        <div id="wd-table"></div>
+        <h3>Recent job changes</h3>
+        <p class="muted">Approved changes, newest first. The next sync picks these up.</p>
+        <div id="wd-changes"></div>
+      </div>
+      <aside id="wd-approvals" class="card approvals" hidden></aside>
+    </div>
   </section>
   <section id="tab-sync" class="panel theme-sync" data-accent="sync">
-    <div class="pbar"><span class="pname">hr-sync</span><span class="pnote">the integration</span></div>
+    <div class="pbar sy-bar"><span class="pname">hr-sync</span><span class="pnote">the integration</span></div>
     <h2>Sync</h2>
     <div id="sy-drift" class="drift"></div>
     <div id="sy-state" class="strip"></div>
@@ -68,15 +78,28 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <div id="ex-out"></div>
   </section>
   <section id="tab-ethena" class="panel theme-ethena" data-accent="ethena">
-    <div class="pbar"><span class="pname">Ethena</span><span class="mockchip">mock</span></div>
-    <h2>Ethena (mock learning platform)</h2>
-    <p class="muted">Ethena owns training. People-facts arrive from Workday through the sync.</p>
-    <input id="et-q" class="search" placeholder="Filter by learner, id, email, course or status">
-    <div id="et-detail"></div>
-    <div id="et-table"></div>
-    <h3>Courses and who gets them</h3>
-    <p class="muted">Who gets each course, decided by attributes.</p>
-    <div id="et-campaigns"></div>
+    <div class="et-app">
+      <div class="et-rail" aria-hidden="true">
+        <span class="et-mark">e</span>
+        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9l7-6 7 6v8H3z"/></svg></span>
+        <span class="et-ico on"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5"/></svg></span>
+        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4h6a2 2 0 012 2v11a2 2 0 00-2-2H3zM11 6a2 2 0 012-2h4v11h-4a2 2 0 00-2 2"/></svg></span>
+        <span class="et-ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16V9M10 16V4M16 16v-5"/></svg></span>
+      </div>
+      <div class="et-main">
+        <div class="pbar et-head">
+          <div class="et-hi"><h2>Hey there, Ethena <span class="mockchip">mock</span></h2>
+            <p class="muted">Ethena owns training. People-facts arrive from Workday through the sync.</p></div>
+          <input id="et-q" class="search" placeholder="Filter by learner, id, email, course or status">
+        </div>
+        <div id="et-stats" class="et-stats"></div>
+        <div id="et-detail"></div>
+        <div id="et-table"></div>
+        <h3>Courses and who gets them</h3>
+        <p class="muted">Who gets each course, decided by attributes.</p>
+        <div id="et-campaigns"></div>
+      </div>
+    </div>
   </section>
   <section id="tab-report" class="panel" data-accent="report">
     <h2>Report</h2>

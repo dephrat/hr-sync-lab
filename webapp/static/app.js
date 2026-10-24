@@ -126,6 +126,8 @@ async function loadApprovals() {
   const rows = (d && d.data) || [];
   const box = $("wd-approvals");
   box.hidden = !rows.length;
+  const n = $("wd-inbox-n");
+  n.hidden = !rows.length; n.textContent = rows.length;
   box.innerHTML = rows.length ? `<h4>Approvals <span class="count">${rows.length}</span></h4><ul class="inbox">` +
     rows.map((c) => `<li><span><strong>${esc(get(c, "reason.descriptor"))}</strong> for ${esc(get(c, "worker.descriptor"))}: ${esc(changeSummary(c))}</span>` +
       `<span class="acts"><button type="button" class="primary" data-act="approve" data-id="${esc(c.id)}">Approve</button>` +
@@ -221,10 +223,19 @@ let learners = [];
 async function renderEthena() {
   learners = await api("api/learners");
   filterLearners();
+  renderStats();
   const cs = await campaigns();
-  $("et-campaigns").innerHTML = (cs && cs.length) ? '<div class="cards camp-cards">' + cs.map((c) =>
-    `<div class="card camp"><h4>${esc(c.campaignName)}</h4><span class="tpill">${esc(c.courseName)}</span>` +
-    `<p class="muted">${esc(c.audience_text)}</p></div>`).join("") + "</div>" : '<p class="muted">none</p>';
+  $("et-campaigns").innerHTML = (cs && cs.length) ? '<ul class="camp-rows">' + cs.map((c, i) =>
+    `<li class="camp"><span class="thumb t${i % 4}" aria-hidden="true"></span>` +
+    `<div><h4>${esc(c.campaignName)}</h4><p class="muted">${esc(c.audience_text)}</p></div>` +
+    `<span class="tpill">${esc(c.courseName)}</span></li>`).join("") + "</ul>" : '<p class="muted">none</p>';
+}
+// Admin-hub style counts across every enrollment.
+function renderStats() {
+  const all = learners.flatMap((l) => l.enrollments || []);
+  const done = all.filter(isDone).length, late = all.filter(isLate).length;
+  $("et-stats").innerHTML = [["Completed", done, "ok"], ["In progress", all.length - done - late, "on"], ["Overdue", late, "late"]]
+    .map(([k, v, c]) => `<div class="stat ${c}"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 const isDone = (e) => /COMPLETE/i.test(e.completionStatus || "");
 const isLate = (e) => !isDone(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||
@@ -281,11 +292,12 @@ const COURSE_FALLBACK = {
   options: ["Nobody, figure it out alone", "Your manager or the People team", "A customer"], answer: 1 };
 function coursePanel(x) {
   const c = COURSE_CONTENT[x.courseName] || COURSE_CONTENT[x.campaignName] || COURSE_FALLBACK;
-  return `<div class="course"><h4>${esc(x.courseName || x.campaignName)}</h4><p>${esc(c.text)}</p>` +
-    `<p><strong>${esc(c.q)}</strong></p>` + c.options.map((o, i) =>
+  return `<div class="course"><div class="c-head"><h4>${esc(x.courseName || x.campaignName)}</h4><span>Lesson 1 of 1</span></div>` +
+    `<div class="c-body"><ol class="c-steps"><li class="on">Read</li><li>Check your understanding</li></ol>` +
+    `<div class="c-main"><p>${esc(c.text)}</p><p><strong>${esc(c.q)}</strong></p>` + c.options.map((o, i) =>
       `<label class="opt"><input type="radio" name="course-q" value="${i}"> ${esc(o)}</label>`).join("") +
     `<p class="wrong" hidden>Not quite, try again.</p>` +
-    `<button type="button" class="primary finish" disabled>Complete course</button></div>`;
+    `<button type="button" class="primary finish" disabled>Complete course</button></div></div></div>`;
 }
 async function showLearner(l) {
   cur.learner = l;
@@ -321,6 +333,7 @@ async function showLearner(l) {
         slot.innerHTML = "";
         learners = await api("api/learners");
         filterLearners();
+        renderStats();
         await showLearner(learners.find((y) => y.id === l.id) || l);
         toast(`${course} completed for ${l.name}.`);
       } catch (e) { fin.disabled = false; throw e; } finally { fin.classList.remove("busy"); }
