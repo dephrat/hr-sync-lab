@@ -103,12 +103,43 @@ function initHire() {
         body: { name: f.name.value.trim(), jobProfile: f.jobProfile.value, location: f.location.value } });
       toast(`Hired ${w.descriptor} (${w.id}). Run Sync to create their Ethena account.`);
       f.reset();
-      await Promise.all([loadWorkers(), loadChanges()]);
+      await Promise.all([loadWorkers(), loadChanges(), loadApprovals()]);
     } finally { btn.classList.remove("busy"); check(); }
   }));
 }
 async function renderWorkday() {
-  await Promise.all([loadWorkers(), loadChanges()]);
+  await Promise.all([loadWorkers(), loadChanges(), loadApprovals()]);
+}
+// Workday-style inbox: submitted job changes wait here until someone approves or denies them.
+function changeSummary(c) {
+  if (get(c, "reason.id") === "Termination") return "leaves the company";
+  return [get(c, "jobProfile.descriptor") && `profile to ${get(c, "jobProfile.descriptor")}`,
+    get(c, "location.descriptor") && `location to ${get(c, "location.descriptor")}`,
+    c.businessTitle && !get(c, "jobProfile.descriptor") && `title to ${c.businessTitle}`,
+    get(c, "supervisoryOrganization.descriptor") && `organization to ${get(c, "supervisoryOrganization.descriptor")}`,
+  ].filter(Boolean).join(", ");
+}
+async function loadApprovals() {
+  const d = await api("workday/jobChanges?status=pending&limit=100");
+  const rows = (d && d.data) || [];
+  const box = $("wd-approvals");
+  box.hidden = !rows.length;
+  box.innerHTML = rows.length ? `<h4>Approvals <span class="count">${rows.length}</span></h4><ul class="inbox">` +
+    rows.map((c) => `<li><span><strong>${esc(get(c, "reason.descriptor"))}</strong> for ${esc(get(c, "worker.descriptor"))}: ${esc(changeSummary(c))}</span>` +
+      `<span class="acts"><button type="button" class="primary" data-act="approve" data-id="${esc(c.id)}">Approve</button>` +
+      `<button type="button" class="plain" data-act="deny" data-id="${esc(c.id)}">Deny</button></span></li>`).join("") + "</ul>" : "";
+  box.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", guard(async () => {
+    box.querySelectorAll("button").forEach((x) => { x.disabled = true; });
+    b.classList.add("busy");
+    try {
+      await api(`workday/jobChanges/${encodeURIComponent(b.dataset.id)}/${b.dataset.act}`, { method: "POST" });
+      toast(b.dataset.act === "approve" ? "Approved. The worker record is updated; Run Sync to carry it to Ethena."
+        : "Denied. The change was discarded and the worker is unchanged.");
+    } finally {
+      await Promise.all([loadWorkers(), loadChanges(), loadApprovals()]);
+      if (cur.worker) await showWorker(cur.worker);
+    }
+  })));
 }
 async function loadWorkers() {
   const q = $("wd-q").value.trim(), n = ++seq.wd;
@@ -136,7 +167,7 @@ async function showWorker(w) {
       <select name="reason">${options(REASONS, (r) => r.replace("_", " "))}</select>
       <select name="jobProfile"><option value="">new job profile</option>${options(PROFILES, (p) => p.replace(/_/g, " "))}</select>
       <select name="location"><option value="">new location</option>${options(LOCATIONS)}</select>
-      <button class="primary" disabled>Record change</button>
+      <button class="primary" disabled>Submit</button>
       <span class="muted" id="jc-hint">Pick a new job profile or location. A promotion or transfer has to change something.</span></form></div>`);
   // Like Workday: the reason is only a label. The change must actually change the profile or
   // the location, except a termination, which needs neither.
@@ -165,14 +196,14 @@ async function showWorker(w) {
     btn.disabled = true; btn.classList.add("busy");
     try {
       await api("workday/jobChanges", { method: "POST", body });
-      toast("Change recorded. Go to Sync and press Run sync.");
-      await Promise.all([loadChanges(), loadWorkers()]);
+      toast("Submitted for approval. Approve it in the Approvals box.");
+      await Promise.all([loadChanges(), loadWorkers(), loadApprovals()]);
       await showWorker(wk);
     } finally { btn.disabled = false; btn.classList.remove("busy"); }
   }));
 }
 async function loadChanges() {
-  const d = await api("workday/jobChanges?limit=100");
+  const d = await api("workday/jobChanges?status=completed&limit=100");
   const rows = ((d && d.data) || []).slice()
     .sort((a, b) => String(b.completedDate || "").localeCompare(String(a.completedDate || ""))).slice(0, 20);
   $("wd-changes").innerHTML = table(rows, [
@@ -224,8 +255,39 @@ function filterLearners() {
   ].map((c) => c[0] === "Learner" ? ["Name", c[1]] : c), true, `No learners match "${q}"`) + "</div>";
   bindRows(box, rows, showLearner);
 }
+const COURSE_CONTENT = {
+  "Harassment Prevention": {
+    text: "Harassment is unwelcome conduct that makes someone feel intimidated, humiliated or unsafe at work. It can be a single serious incident or a pattern of smaller ones, and it can happen in person, in chat or on a video call. Everyone has a part in stopping it, and reporting a concern in good faith is always protected.",
+    q: "A coworker keeps making jokes about a teammate's accent after being asked to stop. What should you do?",
+    options: ["Ignore it, since it is only a joke", "Report it through the company's reporting channel", "Wait until the teammate complains first"], answer: 1 },
+  "Manager Fundamentals": {
+    text: "As a manager, your words carry more weight than they used to. Clear expectations, regular one-on-ones and timely feedback prevent most problems before they grow. When an employee raises a concern, listen fully, take notes and follow the escalation path rather than handling serious issues alone.",
+    q: "An employee tells you privately about a serious conflict with a colleague. What is the best first step?",
+    options: ["Listen, take notes and follow the escalation process", "Promise to keep it secret no matter what", "Tell them to sort it out on their own"], answer: 0 },
+  "Data Privacy Essentials": {
+    text: "Personal data includes anything that identifies a person, such as names, emails, home addresses and employee IDs. Collect only what you need, share it only with people who need it for their work, and store it in approved systems. If you think data was sent to the wrong person, report it right away so it can be contained.",
+    q: "You accidentally email a spreadsheet of employee addresses to the wrong person. What should you do?",
+    options: ["Delete your sent copy and say nothing", "Ask the recipient to forward it back", "Report it immediately to the privacy or security team"], answer: 2 },
+  "Workplace Safety": {
+    text: "Most workplace injuries come from everyday hazards: wet floors, blocked exits, poor lifting and rushing. Keep walkways clear, use the right equipment for the job and take a moment to look before you act. If you see something unsafe, stop and report it, even if it is not your area.",
+    q: "You notice a fire exit blocked by stacked boxes. What is the right response?",
+    options: ["Report it or clear it so the exit is usable", "Leave it, since it is not your department", "Wait for the next safety inspection"], answer: 0 },
+};
+const COURSE_FALLBACK = {
+  text: "This course covers the policies and everyday habits that keep our workplace fair, safe and respectful. Read each section carefully and ask your manager or the People team if anything is unclear.",
+  q: "Who can you ask if part of a policy is unclear?",
+  options: ["Nobody, figure it out alone", "Your manager or the People team", "A customer"], answer: 1 };
+function coursePanel(x) {
+  const c = COURSE_CONTENT[x.courseName] || COURSE_CONTENT[x.campaignName] || COURSE_FALLBACK;
+  return `<div class="course"><h4>${esc(x.courseName || x.campaignName)}</h4><p>${esc(c.text)}</p>` +
+    `<p><strong>${esc(c.q)}</strong></p>` + c.options.map((o, i) =>
+      `<label class="opt"><input type="radio" name="course-q" value="${i}"> ${esc(o)}</label>`).join("") +
+    `<p class="wrong" hidden>Not quite, try again.</p>` +
+    `<button type="button" class="primary finish" disabled>Complete course</button></div>`;
+}
 async function showLearner(l) {
   cur.learner = l;
+  await campaigns();  // maps each enrollment's campaign to its course for the course player
   $("et-detail").innerHTML = `<div class="cards"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>${esc(l.name)} (${esc(l.id)})</h4>` + kv([
     ["Email", l.email], ["Status", l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Reports to", l.managerLearnerId], ["Department", l.department],
@@ -234,18 +296,34 @@ async function showLearner(l) {
     ["Campaign", (x) => esc(x.campaignName)],
     ["Status", (x) => esc(x.completionStatus)], ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))],
     ["", (x) => isDone(x) ? "" : (isLate(x) ? `<span class="late-txt">overdue since ${esc(shortDate(x.deadline))}</span> ` : "") +
-      `<button type="button" class="mark" data-ltc="${esc(x.id)}" data-course="${esc(x.campaignName)}">Mark complete</button>`],
-  ]) + "</div></div>";
-  $("et-detail").querySelectorAll("button.mark").forEach((b) => b.addEventListener("click", guard(async () => {
-    b.disabled = true; b.classList.add("busy");
-    try {
-      await api("ethena/v1/learner-training-campaigns/" + encodeURIComponent(b.dataset.ltc) + "/complete", { method: "POST" });
-      learners = await api("api/learners");
-      filterLearners();
-      await showLearner(learners.find((x) => x.id === l.id) || l);
-      toast(`${b.dataset.course} marked complete for ${l.name}.`);
-    } finally { b.disabled = false; b.classList.remove("busy"); }
-  })));
+      `<button type="button" class="mark" data-ltc="${esc(x.id)}">Take course</button>`],
+  ]) + '<div id="et-course"></div></div></div>';
+  const slot = $("et-course");
+  $("et-detail").querySelectorAll("button.mark").forEach((b) => b.addEventListener("click", () => {
+    const e0 = (l.enrollments || []).find((e) => e.id === b.dataset.ltc);
+    if (!e0) return;
+    const camp = (campaignCache || []).find((c) => c.campaignName === e0.campaignName);
+    const x = { ...e0, courseName: camp ? camp.courseName : e0.campaignName };
+    const course = x.courseName || x.campaignName;
+    slot.innerHTML = coursePanel(x);  // one panel at a time: opening another replaces it
+    const c = COURSE_CONTENT[x.courseName] || COURSE_CONTENT[x.campaignName] || COURSE_FALLBACK;
+    const fin = slot.querySelector("button.finish"), wrong = slot.querySelector(".wrong");
+    slot.querySelectorAll('input[name="course-q"]').forEach((r) => r.addEventListener("change", () => {
+      const ok = +r.value === c.answer;
+      fin.disabled = !ok; wrong.hidden = ok;
+    }));
+    fin.addEventListener("click", guard(async () => {
+      fin.disabled = true; fin.classList.add("busy");
+      try {
+        await api("ethena/v1/learner-training-campaigns/" + encodeURIComponent(x.id) + "/complete", { method: "POST" });
+        slot.innerHTML = "";
+        learners = await api("api/learners");
+        filterLearners();
+        await showLearner(learners.find((y) => y.id === l.id) || l);
+        toast(`${course} completed for ${l.name}.`);
+      } catch (e) { fin.disabled = false; throw e; } finally { fin.classList.remove("busy"); }
+    }));
+  }));
 }
 
 // ---------- Sync ----------

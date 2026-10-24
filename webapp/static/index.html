@@ -33,11 +33,12 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
       <select name="jobProfile"><option value="">job profile</option></select>
       <select name="location"><option value="">location</option></select>
       <button class="primary" disabled>Hire</button></form>
+    <div id="wd-approvals" class="card approvals" hidden></div>
     <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
     <div id="wd-detail"></div>
     <div id="wd-table"></div>
     <h3>Recent job changes</h3>
-    <p class="muted">Newest first. The next sync picks these up.</p>
+    <p class="muted">Approved changes, newest first. The next sync picks these up.</p>
     <div id="wd-changes"></div>
   </section>
   <section id="tab-sync" class="panel theme-sync" data-accent="sync">

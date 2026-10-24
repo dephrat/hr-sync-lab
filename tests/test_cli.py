@@ -31,6 +31,7 @@ def open_item(env, reason):
             "workerId": "W-1042", "effectiveDate": "2026-10-22", "reason": "Data_Change",
             "businessTitle": "Senior Specialist"})
         assert resp.status_code == 201
+        assert env["hc"].post(f"/jobChanges/{resp.json()['id']}/approve").status_code == 200
         cli.main(["run"])
     conn = store.connect(env["db"])
     return conn, conn.execute("SELECT id, worker_id, status FROM review_queue WHERE reason=?",

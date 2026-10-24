@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS job_changes (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     worker_id TEXT NOT NULL REFERENCES workers(id),
     effective_date TEXT NOT NULL,
-    completed_date TEXT NOT NULL,
+    completed_date TEXT,
+    status TEXT NOT NULL DEFAULT 'completed',
     reason TEXT NOT NULL,
     job_profile TEXT,
     location TEXT,
@@ -56,6 +57,20 @@ def connect(path) -> sqlite3.Connection:
     """Open (and create, if needed) the HRIS database."""
     conn = sqlite3.connect(Path(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(job_changes)")]
+    if cols and "status" not in cols:
+        # Older databases: completed_date was NOT NULL and there was no status column.
+        conn.executescript(
+            "ALTER TABLE job_changes RENAME TO job_changes_old;"
+            "DROP INDEX IF EXISTS idx_job_changes_completed;")
+        conn.executescript(SCHEMA)
+        conn.execute(
+            "INSERT INTO job_changes (seq, worker_id, effective_date, completed_date, status, reason,"
+            " job_profile, location, business_title, department) SELECT seq, worker_id,"
+            " effective_date, completed_date, 'completed', reason, job_profile, location,"
+            " business_title, department FROM job_changes_old")
+        conn.execute("DROP TABLE job_changes_old")
+        conn.commit()
     conn.executescript(SCHEMA)
     return conn
 
@@ -79,12 +94,41 @@ def location_id(descriptor: str) -> str:
 def apply_job_change(conn, *, worker_id, effective_date, reason, completed_date,
                      job_profile=None, location=None, business_title=None,
                      department=None) -> int:
-    """Record a job change and apply it to the worker. Returns the change's seq."""
+    """Record a completed job change and apply it to the worker. Returns the change's seq."""
     cur = conn.execute(
-        "INSERT INTO job_changes (worker_id, effective_date, completed_date, reason,"
-        " job_profile, location, business_title, department) VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO job_changes (worker_id, effective_date, completed_date, status, reason,"
+        " job_profile, location, business_title, department) VALUES (?,?,?,'completed',?,?,?,?,?)",
         (worker_id, effective_date, completed_date, reason, job_profile, location,
          business_title, department))
+    _apply_to_worker(conn, worker_id, effective_date, reason, job_profile, location,
+                     business_title, department)
+    conn.commit()
+    return cur.lastrowid
+
+
+def create_pending_change(conn, *, worker_id, effective_date, reason, job_profile=None,
+                          location=None, business_title=None, department=None) -> int:
+    """Record a job change awaiting approval. The worker is not touched."""
+    cur = conn.execute(
+        "INSERT INTO job_changes (worker_id, effective_date, completed_date, status, reason,"
+        " job_profile, location, business_title, department) VALUES (?,?,NULL,'pending',?,?,?,?,?)",
+        (worker_id, effective_date, reason, job_profile, location, business_title, department))
+    conn.commit()
+    return cur.lastrowid
+
+
+def approve_change(conn, seq: int, completed_date: str) -> None:
+    """Complete a pending change: apply it to the worker and stamp completed_date."""
+    r = conn.execute("SELECT * FROM job_changes WHERE seq=?", (seq,)).fetchone()
+    conn.execute("UPDATE job_changes SET status='completed', completed_date=? WHERE seq=?",
+                 (completed_date, seq))
+    _apply_to_worker(conn, r["worker_id"], r["effective_date"], r["reason"], r["job_profile"],
+                     r["location"], r["business_title"], r["department"])
+    conn.commit()
+
+
+def _apply_to_worker(conn, worker_id, effective_date, reason, job_profile, location,
+                     business_title, department) -> None:
     if job_profile:
         conn.execute("UPDATE workers SET job_profile=?, is_manager=? WHERE id=?",
                      (job_profile, int(is_manager_profile(job_profile)), worker_id))
@@ -101,5 +145,3 @@ def apply_job_change(conn, *, worker_id, effective_date, reason, completed_date,
     if reason == "Termination":
         conn.execute("UPDATE workers SET active=0, terminated=1, status_date=? WHERE id=?",
                      (effective_date, worker_id))
-    conn.commit()
-    return cur.lastrowid

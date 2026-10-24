@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from hris.db import (DEPARTMENTS, JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, apply_job_change,
+                     approve_change, create_pending_change,
                      connect, is_manager_profile, location_id, profile_descriptor, utc_now)
 
 
@@ -19,6 +20,10 @@ class JobChangeIn(BaseModel):
     location: str | None = None
     businessTitle: str | None = None
     supervisoryOrganization: str | None = None
+    completedDate: str | None = None  # test hook: pin the completion timestamp
+
+
+class ApproveIn(BaseModel):
     completedDate: str | None = None  # test hook: pin the completion timestamp
 
 
@@ -59,6 +64,7 @@ def job_change_json(r, worker_name) -> dict:
         "worker": _ref(r["worker_id"], worker_name),
         "effectiveDate": r["effective_date"],
         "completedDate": r["completed_date"],
+        "status": r["status"].upper(),
         "reason": _ref(r["reason"], r["reason"].replace("_", " ")),
     }
     if r["job_profile"]:
@@ -135,18 +141,23 @@ def create_app(db_path) -> FastAPI:
 
     @app.get("/jobChanges")
     def list_job_changes(completedFrom: str | None = None,
+                         status: Literal["pending", "completed", "PENDING", "COMPLETED"] | None = None,
                          limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
                          conn=Depends(get_conn)):
-        where, args = "", []
-        if completedFrom:
-            where, args = " WHERE j.completed_date >= ?", [completedFrom]
+        conds, args = [], []
+        if completedFrom:  # pending rows have NULL completed_date, so this excludes them
+            conds.append("j.completed_date >= ?")
+            args.append(completedFrom)
+        if status:
+            conds.append("j.status = ?")
+            args.append(status.lower())
+        where = (" WHERE " + " AND ".join(conds)) if conds else ""
         total = conn.execute(f"SELECT COUNT(*) FROM job_changes j{where}", args).fetchone()[0]
         rows = conn.execute(f"{_JC_SELECT}{where} ORDER BY j.completed_date, j.seq LIMIT ? OFFSET ?",
                             [*args, limit, offset]).fetchall()
         return {"total": total, "data": [job_change_json(r, r["worker_name"]) for r in rows]}
 
-    @app.get("/jobChanges/{change_id}")
-    def get_job_change(change_id: str, conn=Depends(get_conn)):
+    def find_change(conn, change_id):
         try:
             seq = int(change_id.removeprefix("JC-"))
         except ValueError:
@@ -154,13 +165,39 @@ def create_app(db_path) -> FastAPI:
         r = conn.execute(f"{_JC_SELECT} WHERE j.seq=?", (seq,)).fetchone()
         if r is None:
             raise HTTPException(404, "job change not found")
+        return r
+
+    @app.get("/jobChanges/{change_id}")
+    def get_job_change(change_id: str, conn=Depends(get_conn)):
+        r = find_change(conn, change_id)
         return job_change_json(r, r["worker_name"])
+
+    @app.post("/jobChanges/{change_id}/approve")
+    def approve_job_change(change_id: str, body: ApproveIn | None = None,
+                           conn=Depends(get_conn)):
+        """Approve a pending change: it takes effect on the worker and gets a completedDate."""
+        r = find_change(conn, change_id)
+        if r["status"] != "pending":
+            raise HTTPException(409, "job change is already completed")
+        approve_change(conn, r["seq"], (body and body.completedDate) or utc_now())
+        r = find_change(conn, change_id)
+        return job_change_json(r, r["worker_name"])
+
+    @app.post("/jobChanges/{change_id}/deny")
+    def deny_job_change(change_id: str, conn=Depends(get_conn)):
+        """Deny a pending change: it is deleted and the worker is untouched."""
+        r = find_change(conn, change_id)
+        if r["status"] != "pending":
+            raise HTTPException(409, "job change is already completed")
+        conn.execute("DELETE FROM job_changes WHERE seq=?", (r["seq"],))
+        conn.commit()
+        return {"id": f"JC-{r['seq']:04d}", "status": "DENIED"}
 
     @app.post("/jobChanges", status_code=201)
     def post_job_change(body: JobChangeIn, conn=Depends(get_conn)):
-        """Mock simplification of Workday's initiate/submit/approve flow: the change is
-        applied to the worker immediately and completedDate is set to now (or the
-        optional completedDate supplied by the caller)."""
+        """Submit a job change for approval. It is stored as PENDING with no completedDate and
+        does not touch the worker until POST /jobChanges/{id}/approve. Test hook: a body with
+        completedDate skips approval and completes the change at that timestamp."""
         cur_w = conn.execute("SELECT * FROM workers WHERE id=?", (body.workerId,)).fetchone()
         if cur_w is None:
             raise HTTPException(404, "worker not found")
@@ -182,11 +219,13 @@ def create_app(db_path) -> FastAPI:
             if not any(changes):
                 raise HTTPException(422, "a job change must change the job profile, location, "
                                          "title or organization, unless the reason is Termination")
-        seq = apply_job_change(
-            conn, worker_id=body.workerId, effective_date=body.effectiveDate,
-            reason=body.reason, completed_date=body.completedDate or utc_now(),
-            job_profile=body.jobProfile, location=body.location,
-            business_title=body.businessTitle, department=body.supervisoryOrganization)
+        fields = dict(worker_id=body.workerId, effective_date=body.effectiveDate,
+                      reason=body.reason, job_profile=body.jobProfile, location=body.location,
+                      business_title=body.businessTitle, department=body.supervisoryOrganization)
+        if body.completedDate:
+            seq = apply_job_change(conn, completed_date=body.completedDate, **fields)
+        else:
+            seq = create_pending_change(conn, **fields)
         r = conn.execute(f"{_JC_SELECT} WHERE j.seq=?", (seq,)).fetchone()
         return job_change_json(r, r["worker_name"])
 

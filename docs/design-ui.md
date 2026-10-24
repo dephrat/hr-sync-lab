@@ -12,12 +12,13 @@ One page, four tabs across the top, each a plain text link that swaps the panel 
 
 ### Workday tab (mock HRIS)
 - Worker table with a search box (id, name, job profile, location, department, manager, status).
-- Click a worker: record detail plus a **Job change** form: reason (Promotion, Transfer, Termination, Data_Change), new job profile (dropdown of the eight profiles), new location (dropdown of the seven locations). Submit posts to the mock's `POST /jobChanges`, which applies the change the way the API does.
-- Recent job changes list (newest first), so the reader sees what the next sync will pick up.
+- Click a worker: record detail plus a **Job change** form: reason (Promotion, Transfer, Termination, Data_Change), new job profile (dropdown of the eight profiles), new location (dropdown of the seven locations). Submit posts to the mock's `POST /jobChanges`, which stores the change as pending without touching the worker.
+- **Approvals** card between the Hire form and the search box, styled like a Workday inbox: one line per pending change ("Promotion for Chloe Okafor: profile to Sales Team Lead") with Approve and Deny buttons and the count in the title. It is hidden when nothing is pending. Approve applies the change to the worker and stamps its completed date; Deny deletes it. Hires skip approval.
+- Recent job changes list (approved changes only, newest first), so the reader sees what the next sync will pick up.
 
-### Ethena tab (mock learning platform), read-only
+### Ethena tab (mock learning platform)
 - Learner table with search (id, name, email, status, country, state, manager, category).
-- Click a learner: attributes plus enrollments (campaign, status, deadline).
+- Click a learner: attributes plus enrollments (campaign, status, deadline). Each unfinished enrollment has a **Take course** button that opens a small inline course on a lavender panel: a short lesson, one multiple-choice question, and a Complete course button that unlocks only on the right answer. Completing calls the mock's complete endpoint. One course is open at a time.
 - **Campaigns** sub-list: the six campaigns with their audience rules in words ("managers", "Canada + Ontario"), so the reader sees why a promotion produces those courses.
 
 ### Sync tab

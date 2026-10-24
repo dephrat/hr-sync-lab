@@ -133,3 +133,13 @@ form.jc { margin-top: 10px; }
 .late-txt { color: #C62828; font-size: 12px; font-weight: 600; }
 .theme-ethena button.mark { background: #fff; color: var(--et-ink); border: 1px solid var(--et-ink); font-size: 12px; padding: 2px 10px; cursor: pointer; }
 .theme-ethena button.mark:hover { background: var(--et-ink); color: #fff; }
+
+.theme-workday .approvals { border-left: 4px solid var(--wd-blue); }
+.approvals h4 .count { display: inline-block; min-width: 20px; text-align: center; background: var(--wd-blue); color: #fff; border-radius: 10px; font-size: 12px; padding: 0 6px; margin-left: 4px; }
+ul.inbox { list-style: none; margin: 0; padding: 0; }
+ul.inbox li { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid #e3e6e9; }
+ul.inbox li:first-child { border-top: none; }
+ul.inbox .acts { display: flex; gap: 6px; }
+.course { background: #f4f1ff; border-radius: 10px; padding: 12px 16px; margin-top: 12px; }
+.course label.opt { display: block; margin: 4px 0; cursor: pointer; }
+.course .wrong { color: #b5524f; margin: 6px 0; }

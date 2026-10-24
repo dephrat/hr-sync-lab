@@ -55,9 +55,10 @@ def test_after_sync(env):
     md = build(env)
     assert count(md, "Terminated in HRIS but active in Ethena") == 0
     assert count(md, "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"])
-    env["hc"].post("/jobChanges", json={
+    jc = env["hc"].post("/jobChanges", json={
         "workerId": env["facts"]["absent_workers"][0], "effectiveDate": "2026-10-22", "reason": "Data_Change",
-        "businessTitle": "Senior Specialist"})
+        "businessTitle": "Senior Specialist"}).json()
+    env["hc"].post(f"/jobChanges/{jc['id']}/approve")
     engine.run(env["hris"], env["learning"], env["rules"], env["db"], now=NOW, full=False)
     assert count(build(env), "In HRIS, not in Ethena") == len(env["facts"]["absent_workers"]) - 1
 

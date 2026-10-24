@@ -41,7 +41,7 @@ def test_job_changes_since_filters_and_orders(client):
     assert all(d >= cutoff for d in dates)
 
 
-def test_post_job_change_applies_to_worker(client):
+def test_post_job_change_applies_to_worker_after_approval(client):
     worker = client.get("/workers/W-1001").json()
     resp = client.post("/jobChanges", json={
         "workerId": "W-1001",
@@ -50,8 +50,13 @@ def test_post_job_change_applies_to_worker(client):
         "jobProfile": "Sales_Team_Lead",
     })
     assert resp.status_code == 201
+    pending = resp.json()
+    assert pending["status"] == "PENDING" and pending["completedDate"] is None
+    assert client.get("/workers/W-1001").json() == worker
+    resp = client.post(f"/jobChanges/{pending['id']}/approve")
+    assert resp.status_code == 200
     change = resp.json()
-    assert change["completedDate"]
+    assert change["status"] == "COMPLETED" and change["completedDate"]
     assert change["worker"]["id"] == "W-1001"
     assert client.get(f"/jobChanges/{change['id']}").json() == change
     after = client.get("/workers/W-1001").json()
@@ -83,8 +88,10 @@ def test_seed_is_deterministic(tmp_path):
 
 
 def test_terminated_worker_rejects_change(client):
-    assert client.post("/jobChanges", json={
-        "workerId": "W-1001", "effectiveDate": "2026-10-01", "reason": "Termination"}).status_code == 201
+    t = client.post("/jobChanges", json={
+        "workerId": "W-1001", "effectiveDate": "2026-10-01", "reason": "Termination"})
+    assert t.status_code == 201
+    assert client.post(f"/jobChanges/{t.json()['id']}/approve").status_code == 200
     r = client.post("/jobChanges", json={
         "workerId": "W-1001", "effectiveDate": "2026-10-02", "reason": "Transfer",
         "location": "Toronto, ON"})
@@ -124,3 +131,42 @@ def test_hire_rejects_bad_input(client):
     assert client.post("/workers", json={**ok, "location": "Mars"}).status_code == 422
     assert client.post("/workers", json={**ok, "name": "Madonna"}).status_code == 422
     assert client.get("/workers").json()["total"] == 100
+
+
+def _pending(client, wid="W-1003"):
+    r = client.post("/jobChanges", json={"workerId": wid, "effectiveDate": "2026-10-01",
+                                         "reason": "Transfer", "location": "Remote - Canada"})
+    assert r.status_code == 201 and r.json()["status"] == "PENDING"
+    return r.json()
+
+
+def test_pending_change_invisible_to_completed_from(client):
+    jc = _pending(client)
+    recent = client.get("/jobChanges", params={"completedFrom": "2000-01-01", "limit": 100}).json()
+    assert jc["id"] not in {c["id"] for c in recent["data"]}
+    pend = client.get("/jobChanges", params={"status": "pending"}).json()
+    assert [c["id"] for c in pend["data"]] == [jc["id"]]
+    done = client.get("/jobChanges", params={"status": "completed", "limit": 100}).json()
+    assert all(c["status"] == "COMPLETED" for c in done["data"])
+    client.post(f"/jobChanges/{jc['id']}/approve", json={"completedDate": "2026-10-05T00:00:00Z"})
+    recent = client.get("/jobChanges", params={"completedFrom": "2026-10-05T00:00:00Z"}).json()
+    assert jc["id"] in {c["id"] for c in recent["data"]}
+    assert client.get("/workers/W-1003").json()["location"]["descriptor"] == "Remote - Canada"
+
+
+def test_approve_and_deny_conflicts(client):
+    jc = _pending(client)
+    assert client.post(f"/jobChanges/{jc['id']}/approve").status_code == 200
+    assert client.post(f"/jobChanges/{jc['id']}/approve").status_code == 409
+    assert client.post(f"/jobChanges/{jc['id']}/deny").status_code == 409
+    assert client.post("/jobChanges/JC-9999/approve").status_code == 404
+    assert client.post("/jobChanges/JC-9999/deny").status_code == 404
+
+
+def test_deny_removes_pending_change(client):
+    before = client.get("/workers/W-1004").json()
+    jc = _pending(client, "W-1004")
+    r = client.post(f"/jobChanges/{jc['id']}/deny")
+    assert r.status_code == 200 and r.json()["status"] == "DENIED"
+    assert client.get(f"/jobChanges/{jc['id']}").status_code == 404
+    assert client.get("/workers/W-1004").json() == before

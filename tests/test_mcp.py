@@ -33,9 +33,11 @@ def env(tmp_path):
     r = rules.load(RULES)
     db = store.connect(tmp_path / "sync.db")
     hris, learning = WorkdayClient(hc), EthenaClient(ec)
-    assert hc.post("/jobChanges", json={
+    jc = hc.post("/jobChanges", json={
         "workerId": "W-1042", "effectiveDate": "2026-10-22", "reason": "Data_Change",
-        "businessTitle": "Senior Specialist"}).status_code == 201
+        "businessTitle": "Senior Specialist"})
+    assert jc.status_code == 201
+    assert hc.post(f"/jobChanges/{jc.json()['id']}/approve").status_code == 200
     engine.run(hris, learning, r, db, now=NOW)
     return {"hris": hris, "learning": learning, "rules": r, "db": db}
 

@@ -56,6 +56,9 @@ def post_change(env, worker_id, **extra):
         "workerId": worker_id, "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Senior Specialist", **extra})
     assert resp.status_code == 201
+    if resp.json()["status"] == "PENDING":
+        resp = env["hc"].post(f"/jobChanges/{resp.json()['id']}/approve")
+        assert resp.status_code == 200
     return resp.json()
 
 
@@ -340,3 +343,19 @@ def test_full_run_is_one_run_and_second_is_noop(env):
     second = run(env, full=True)
     assert second.patched == second.created == second.terminated == 0
     assert sum(getattr(second, b) for b in buckets) == second.changes_seen
+
+
+def test_pending_change_waits_for_approval(env):
+    run(env)
+    wid = env["facts"]["absent_workers"][1]
+    resp = env["hc"].post("/jobChanges", json={
+        "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
+        "businessTitle": "Senior Specialist"})
+    jc = resp.json()
+    assert jc["status"] == "PENDING"
+    seen = lambda: env["db"].execute("SELECT 1 FROM audit WHERE change_id=?", (jc["id"],)).fetchone()
+    run(env)
+    assert seen() is None
+    assert env["hc"].post(f"/jobChanges/{jc['id']}/approve").status_code == 200
+    s = run(env)
+    assert seen() and s.created == 1

@@ -123,7 +123,8 @@ def test_noop_job_change_then_run_ok(client):
     r = client.post("/workday/jobChanges", json={
         "workerId": wid, "effectiveDate": "2026-10-22", "reason": "Data_Change",
         "businessTitle": "Senior " + w["businessTitle"]})
-    assert r.status_code == 201
+    assert r.status_code == 201 and r.json()["status"] == "PENDING"
+    assert client.post(f"/workday/jobChanges/{r.json()['id']}/approve").status_code == 200
     body = client.post("/api/run").json()
     mine = [c for c in body["changes"] if c["change_id"] == r.json()["id"]]
     assert mine and mine[0]["outcome"] == "ok" and body["summary"]["failed"] == 0

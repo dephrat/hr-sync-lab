@@ -48,14 +48,14 @@ One `hrsync run` (add `--changes-only` to skip the final step on a large tenant)
 
 The story takes six clicks:
 
-1. Open Workday (mock), search for Lucas Fischer (W-1014, a Toronto software engineer), and record a Promotion to Engineering Manager.
+1. Open Workday (mock), search for Lucas Fischer (W-1014, a Toronto software engineer), and submit a Promotion to Engineering Manager. Like real Workday, the change waits for approval: press Approve in the Approvals box above the search. Only then does the worker record change.
 2. In the Ethena tab, check that his learner shows manager = no and has no Manager Fundamentals.
 3. In the Sync tab, press Run sync (it also checks everyone else against Workday and fixes drift with no job change). The sentence for him reads "Set isManager=true in Ethena. Verified: ..., Manager Fundamentals".
 4. Read the sentences the page prints for each change: what was patched, what was queued and why.
 5. Check Ethena again: his attributes changed and he is enrolled in Manager Fundamentals.
 6. Resolve a queue item in the Sync tab, then read the Report tab to see the drift that is left.
 
-You can also hire someone in Workday and mark training complete in Ethena, to see the sync leave each system's own data alone.
+You can also hire someone in Workday (a hire completes in one step, no approval) and take a course in Ethena: open a learner, press Take course on an unfinished enrollment, read the short lesson and answer the question correctly to complete it. Both show the sync leaving each system's own data alone. Deny in the Approvals box discards a submitted change without touching the worker.
 
 Reset demo puts all three databases back to the seed.
 
