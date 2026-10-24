@@ -24,7 +24,8 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
   </nav>
 </header>
 <main class="wrap">
-  <section id="tab-workday" class="panel" data-accent="workday">
+  <section id="tab-workday" class="panel theme-workday" data-accent="workday">
+    <div class="pbar"><span class="pname">Workday</span><span class="mockchip">mock</span></div>
     <h2>Workday (mock HRIS)</h2>
     <p class="muted">Click a name to change someone's job. Then watch the change sync to Ethena.</p>
     <input id="wd-q" class="search" placeholder="Search by name, id, email, job profile, location or department">
@@ -34,7 +35,8 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">Newest first. The next sync picks these up.</p>
     <div id="wd-changes"></div>
   </section>
-  <section id="tab-sync" class="panel" data-accent="sync">
+  <section id="tab-sync" class="panel theme-sync" data-accent="sync">
+    <div class="pbar"><span class="pname">hr-sync</span><span class="pnote">the integration</span></div>
     <h2>Sync</h2>
     <div id="sy-drift" class="drift"></div>
     <div id="sy-state" class="strip"></div>
@@ -58,7 +60,8 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <p class="muted">Clicking a person in the lookup fills the worker id.</p>
     <div id="ex-out"></div>
   </section>
-  <section id="tab-ethena" class="panel" data-accent="ethena">
+  <section id="tab-ethena" class="panel theme-ethena" data-accent="ethena">
+    <div class="pbar"><span class="pname">Ethena</span><span class="mockchip">mock</span></div>
     <h2>Ethena (mock learning platform)</h2>
     <p class="muted">Learners and their training. Ethena only knows what it has been told.</p>
     <input id="et-q" class="search" placeholder="Filter by learner, id, email, course or status">

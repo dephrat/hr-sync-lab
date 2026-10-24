@@ -100,7 +100,7 @@ async function loadWorkers() {
     ["Name", (w) => esc(w.descriptor)],
     ["Job profile", (w) => esc(w.jobProfile)], ["Location", (w) => esc(w.location)],
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
-    ["Status", (w) => (get(w, "workerStatus.terminated") ? "Terminated" : "Active")],
+    ["Status", (w) => (get(w, "workerStatus.terminated") ? '<span class="st-term">Terminated</span>' : '<span class="st-act">Active</span>')],
   ], true, `No workers match "${q}"`) + (rows && rows.length === 25 ? '<p class="muted">Showing the first 25. Search to narrow.</p>' : "");
   bindRows(box, rows, showWorker);
 }
@@ -170,10 +170,9 @@ async function renderEthena() {
   learners = await api("api/learners");
   filterLearners();
   const cs = await campaigns();
-  $("et-campaigns").innerHTML = table(cs, [
-    ["Campaign", (c) => esc(c.campaignName)], ["Course", (c) => esc(c.courseName)],
-    ["Who gets it", (c) => `<span class="muted">${esc(c.audience_text)}</span>`],
-  ]);
+  $("et-campaigns").innerHTML = (cs && cs.length) ? '<div class="cards camp-cards">' + cs.map((c) =>
+    `<div class="card camp"><h4>${esc(c.campaignName)}</h4><span class="tpill">${esc(c.courseName)}</span>` +
+    `<p class="muted">${esc(c.audience_text)}</p></div>`).join("") + "</div>" : '<p class="muted">none</p>';
 }
 const isDone = (e) => /COMPLETE/i.test(e.completionStatus || "");
 const isLate = (e) => !isDone(e) && (/OVERDUE|PAST/i.test(e.completionStatus || "") ||

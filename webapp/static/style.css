@@ -85,3 +85,45 @@ form.jc { margin-top: 10px; }
 .tpill.done em { color: #999; }
 .tpill.done { background: #f0f0f0; color: #999; text-decoration: line-through; }
 
+
+/* themes: per-product chrome inside each panel (styled text only, no logos) */
+.pbar { display: flex; align-items: center; gap: 10px; margin: -4px -20px 8px; padding: 10px 20px; }
+.pname { font-weight: 600; font-size: 16px; }
+.mockchip { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 3px; background: #ffc94d; color: #4a3600; }
+.st-act { color: #1d7d3c; }
+.st-term { color: #777; }
+
+.theme-workday { --wd-blue: #0875e1; --wd-bar: #1c2b36; border-top: 1px solid var(--line); border-radius: 4px; padding-top: 0; box-shadow: none !important; overflow: hidden; }
+.theme-workday .pbar { margin-top: 0; background: var(--wd-bar); }
+.theme-workday .pname { color: #fff; font-weight: 500; }
+.theme-workday h2 { font-weight: 500; color: #1c2b36; }
+.theme-workday a, .theme-workday a.namelink { color: var(--wd-blue); }
+.theme-workday button.primary { background: var(--wd-blue); border-color: var(--wd-blue); border-radius: 4px; }
+.theme-workday th { background: #f0f2f4; font-size: 13px; font-weight: 600; color: #4a5560; }
+.theme-workday th, .theme-workday td { border-left: none; border-right: none; border-color: #e3e6e9; padding: 8px 10px; }
+.theme-workday .card { border-color: #dfe3e7; border-radius: 4px; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.theme-workday tr.sel td { background: #e8f2fd; }
+.theme-workday .search:focus, .theme-workday select:focus { outline: 2px solid var(--wd-blue); outline-offset: -1px; }
+
+.theme-ethena { --et-ink: #4a2fd0; border-top: 1px solid #e4defc; border-radius: 14px; padding-top: 0; overflow: hidden; }
+.theme-ethena .pbar { margin-top: 0; background: #f4f1ff; border-bottom: 1px solid #e4defc; }
+.theme-ethena .pname { color: var(--et-ink); font-size: 18px; font-weight: 700; }
+.theme-ethena h2, .theme-ethena h3 { color: #2b1d7a; }
+.theme-ethena .tablewrap { border: 1px solid #e4defc; border-radius: 10px; }
+.theme-ethena table { margin: 0; }
+.theme-ethena th, .theme-ethena td { border: none; border-bottom: 1px solid #efebfd; }
+.theme-ethena tr:last-child td { border-bottom: none; }
+.theme-ethena th { background: #f8f6ff; color: #4a3f80; }
+.theme-ethena .card { border-color: #e4defc; border-radius: 10px; }
+.theme-ethena input, .theme-ethena select, .theme-ethena button { border-radius: 999px; }
+.theme-ethena button.primary { background: var(--et-ink); border-color: var(--et-ink); }
+.theme-ethena .spill { background: #e8e3ff; color: var(--et-ink); }
+.theme-ethena .spill.term { background: #f0eef7; color: #8a84a3; }
+.theme-ethena .camp { background: #fbfaff; }
+.theme-ethena .camp p { margin: 6px 0 0; }
+
+.theme-sync { padding-top: 0; }
+.theme-sync .pbar { margin-top: 0; background: #f2f8f5; border-bottom: 1px solid #d4e8dd; }
+.theme-sync .pname { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1B7F5A; font-size: 15px; }
+.theme-sync .pnote { font-size: 12px; color: var(--muted); }
+@media (max-width: 900px) { .pbar { padding: 8px 12px; margin-left: -20px; margin-right: -20px; } .theme-ethena { border-radius: 10px; } }
