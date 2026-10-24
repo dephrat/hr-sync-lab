@@ -411,8 +411,8 @@ function bindGroups(root) {
 }
 const GROUPS = [["failed", "Failed", false, true], ["needs_person", "Needs a person", true, true],
   ["updated", "Updated in Ethena", true, false], ["left", "Left the company", false, false],
-  ["unchanged", "Already correct", false, false]];
-const LEGEND = "Needs a person: the sync wrote nothing and is waiting for you. Updated: the sync changed Ethena. Already correct: nothing to do.";
+  ["unchanged", "Checked, nothing to change", false, false]];
+const LEGEND = "Needs a person: the sync wrote nothing and is waiting for you. Updated: the sync changed Ethena. Checked, nothing to change: Ethena already matched.";
 function groupHtml(key, title, open, items) {
   const li = (c, i) => `<li class="o-${esc(c.outcome)}"${i >= 10 ? " hidden data-more" : ""}>${esc(c.sentence)}</li>`;
   const more = items.length > 10 ? `<a href="#" class="showall">Show all ${items.length}</a>` : "";
@@ -426,8 +426,9 @@ async function runSync() {
   try {
     const r = await api("api/run", { method: "POST" });
     const s = r.summary || {}, changes = r.changes || [];
-    const note = s.changes_seen > 0 && s.skipped === s.changes_seen
-      ? '<div class="note">Nothing new since the last run. Re-running is safe: every change already handled was skipped.</div>' : "";
+    const wrote = (s.patched || 0) + (s.created || 0) + (s.terminated || 0) + (s.queued || 0) + (s.failed || 0);
+    const note = s.changes_seen > 0 && wrote === 0
+      ? `<div class="note">Nothing to change: checked ${s.changes_seen} people and Ethena already matches Workday. Running again is always safe.</div>` : "";
     const secs = GROUPS.map(([k, title, open]) => [k, title, open, changes.filter((c) => c.group === k)])
       .filter((g) => g[3].length).map((g) => groupHtml(...g)).join("");
     $("sy-result").innerHTML = `<p class="muted legend">${esc(LEGEND)}</p>${note}` +
