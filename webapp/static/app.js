@@ -162,6 +162,13 @@ async function loadWorkers() {
     ["Department", (w) => esc(w.department)], ["Manager", (w) => yesno(w.isManager)],
     ["Status", (w) => (get(w, "workerStatus.terminated") ? '<span class="st-term">Terminated</span>' : '<span class="st-act">Active</span>')],
   ], true, `No workers match "${q}"`) + pager(d.total);
+  // A filter (typed, or set by a hire) is easy to miss in the header search box, so say it here.
+  if (q) box.insertAdjacentHTML("afterbegin",
+    `<p class="muted pager">Showing workers matching "${esc(q)}". <a href="#" id="wd-clear">Show everyone</a></p>`);
+  const clear = box.querySelector("#wd-clear");
+  if (clear) clear.addEventListener("click", guard((ev) => {
+    ev.preventDefault(); $("wd-q").value = ""; wdPage = 0; return loadWorkers();
+  }));
   bindRows(box, rows, showWorker);
   box.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", guard(() => {
     wdPage += +b.dataset.pg; return loadWorkers();
