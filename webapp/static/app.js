@@ -110,10 +110,25 @@ async function showWorker(w) {
     ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"],
   ]) + `<form class="jc row" id="jc-form"><strong>Job change:</strong>
       <select name="reason">${options(REASONS, (r) => r.replace("_", " "))}</select>
-      <select name="jobProfile"><option value="">profile unchanged</option>${options(PROFILES, (p) => p.replace(/_/g, " "))}</select>
-      <select name="location"><option value="">location unchanged</option>${options(LOCATIONS)}</select>
-      <button class="primary">Record change</button></form></div>`;
-  $("jc-form").addEventListener("submit", guard(async (ev) => {
+      <select name="jobProfile"><option value="">new job profile</option>${options(PROFILES, (p) => p.replace(/_/g, " "))}</select>
+      <select name="location"><option value="">new location</option>${options(LOCATIONS)}</select>
+      <button class="primary" disabled>Record change</button>
+      <span class="muted" id="jc-hint">Pick a new job profile or location. A promotion or transfer has to change something.</span></form></div>`;
+  // Like Workday: the reason is only a label. The change must actually change the profile or
+  // the location, except a termination, which needs neither.
+  const form = $("jc-form"), curProfile = get(wk, "jobProfile.id"), curLocation = get(wk, "location.descriptor");
+  const check = () => {
+    const term = form.reason.value === "Termination";
+    const changed = (form.jobProfile.value && form.jobProfile.value !== curProfile) ||
+      (form.location.value && form.location.value !== curLocation);
+    form.querySelector("button").disabled = !(term || changed);
+    $("jc-hint").textContent = term ? "Termination needs no other change." :
+      changed ? "" : (form.jobProfile.value || form.location.value)
+        ? "That is the same as the current value. Pick something different." :
+        "Pick a new job profile or location. A promotion or transfer has to change something.";
+  };
+  ["reason", "jobProfile", "location"].forEach((n) => form[n].addEventListener("change", check));
+  form.addEventListener("submit", guard(async (ev) => {
     ev.preventDefault();
     const f = ev.target, btn = f.querySelector("button");
     const body = { workerId: wk.id, effectiveDate: new Date().toLocaleDateString("en-CA"), reason: f.reason.value };
