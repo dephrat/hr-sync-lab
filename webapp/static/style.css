@@ -61,3 +61,6 @@ blockquote { margin: 10px 0; padding: 8px 14px; border-left: 4px solid var(--acc
 .toast { background: #1B7F5A; color: #fff; padding: 10px 14px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
 .toast.error { background: #C62828; }
 form.jc { margin-top: 10px; }
+[id$="-detail"] { position: relative; }
+.closecard { position: absolute; top: 14px; right: 6px; border: none; background: none; font-size: 20px; line-height: 1; color: #777; padding: 2px 8px; }
+.closecard:hover { color: #000; }

@@ -103,7 +103,7 @@ async function loadWorkers() {
 async function showWorker(w) {
   const d = await api("api/workers/" + encodeURIComponent(w.id));
   const wk = d.worker || {};
-  $("wd-detail").innerHTML = `<div class="card"><h4>${esc(wk.descriptor)} (${esc(wk.id)})</h4>` + kv([
+  $("wd-detail").innerHTML = `<div class="card"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><h4>${esc(wk.descriptor)} (${esc(wk.id)})</h4>` + kv([
     ["Email", wk.primaryWorkEmail], ["Title", wk.businessTitle], ["Job profile", get(wk, "jobProfile.descriptor")],
     ["Location", get(wk, "location.descriptor")], ["Department", get(wk, "primarySupervisoryOrganization.descriptor")],
     ["Manager", yesno(wk.isManager)], ["Hired", wk.hireDate],
@@ -175,7 +175,7 @@ async function showLearner(l) {
   const [e, cs] = await Promise.all([
     api("ethena/v1/learner-training-campaigns?limit=100&learnerId=" + encodeURIComponent(l.id)), campaigns()]);
   const names = Object.fromEntries(cs.map((c) => [c.id, c.campaignName]));
-  $("et-detail").innerHTML = `<div class="cards"><div class="card"><h4>${esc(l.name)} (${esc(l.id)})</h4>` + kv([
+  $("et-detail").innerHTML = `<div class="cards"><button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>${esc(l.name)} (${esc(l.id)})</h4>` + kv([
     ["Email", l.email], ["Status", l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Reports to", l.managerLearnerId], ["Department", l.department],
     ["Category", l.customCategory], ["Worker type", l.workerType],
@@ -281,7 +281,7 @@ async function showPerson(w) {
   else lcard = kv([["Learner id", l.id], ["Status", l.status], ["Country", l.country], ["State", l.state],
     ["Manager", yesno(l.isManager)], ["Category", l.customCategory]]);
   $("sy-person").innerHTML = `<div class="cards">
-    <div class="card"><h4>Workday</h4>${kv([["Name", wk.descriptor], ["Id", wk.id], ["Email", wk.primaryWorkEmail],
+    <button type="button" class="closecard" aria-label="Close" title="Close">\u00d7</button><div class="card"><h4>Workday</h4>${kv([["Name", wk.descriptor], ["Id", wk.id], ["Email", wk.primaryWorkEmail],
       ["Job profile", get(wk, "jobProfile.descriptor")], ["Location", get(wk, "location.descriptor")],
       ["Manager", yesno(wk.isManager)], ["Status", get(wk, "workerStatus.terminated") ? "Terminated" : "Active"]])}</div>
     <div class="card"><h4>Ethena learner</h4>${lcard}</div>
@@ -348,3 +348,12 @@ $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("sy-explain").addEventListener("submit", guard(explain));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 route();
+
+// One handler for every detail pane's close button: empty the pane and drop the row highlight.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button.closecard");
+  if (!btn) return;
+  const pane = btn.closest('[id$="-detail"]');
+  if (pane) pane.innerHTML = "";
+  document.querySelectorAll("tr.sel").forEach((x) => x.classList.remove("sel"));
+});
