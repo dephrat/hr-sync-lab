@@ -48,12 +48,12 @@ The story takes six clicks:
 
 1. In the Workday tab, promote someone (Chloe Chen, a Toronto sales rep, becomes a team lead).
 2. In the Ethena tab, check that her learner has no manager course yet.
-3. Press Run sync.
+3. In the Sync tab, press Run sync.
 4. Read the sentences the page prints for each change: what was patched, what was queued and why.
 5. Check Ethena again: her attributes changed and she is enrolled in Manager Fundamentals.
-6. Resolve a queue item, then read the Report to see the drift that is left.
+6. Resolve a queue item in the Sync tab, then read the Report tab to see the drift that is left.
 
-Reset puts all three databases back to the seed.
+Reset demo puts all three databases back to the seed.
 
 ## Quickstart
 

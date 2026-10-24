@@ -96,8 +96,8 @@ A location sets `country` and either `state` (US) or `customCategory` (Canadian 
 
 ## Web page
 
-`hrsync web` serves the demo page (see [design-ui.md](design-ui.md)). HR Operations uses it to work the review queue without a terminal: the Queue tab lists open items with the reason code, and each can be skipped with a note or closed by picking the learner it belongs to, which is the same action as `hrsync resolve`. Run sync starts one sync pass and prints a sentence per change. Report shows the drift report.
+`hrsync web` serves the demo page (see [design-ui.md](design-ui.md)). HR Operations uses it to work the review queue without a terminal: the Sync tab lists open queue items with the reason code, and each can be skipped with a note or closed by picking the learner it belongs to, which is the same action as `hrsync resolve`. Run sync starts one sync pass and prints a sentence per change. The Report tab shows the drift report.
 
-Reset puts the workers, learners, sync state and queue back to the seed. It is meant for the demo and wipes everything the page created, so never run it against data anyone cares about.
+Reset demo puts the workers, learners, sync state and queue back to the seed. It is meant for the demo and wipes everything the page created, so never run it against data anyone cares about.
 
 The deployed page sits behind a secret path prefix: `https://hrsync.ephrat.ai/<key>/`. The key is in `/docker/hrsync/.env` on the VPS and in `~/.hrsync-demo-key` on the maintainer's Mac. It is never stored in the repo. To rotate it, follow the last line of [deploy/README.md](../deploy/README.md).
