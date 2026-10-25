@@ -198,7 +198,7 @@ def test_approve_noop_change_rejected(client):
     assert b.status_code == 201
     assert client.post(f"/jobChanges/{a['id']}/approve").status_code == 200
     r = client.post(f"/jobChanges/{b.json()['id']}/approve")
-    assert r.status_code == 422 and "no longer changes anything" in r.json()["detail"]
+    assert r.status_code == 422 and "nothing left to approve" in r.json()["detail"]
     assert client.post(f"/jobChanges/{b.json()['id']}/deny").status_code == 200
 
 

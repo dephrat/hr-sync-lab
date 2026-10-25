@@ -54,8 +54,9 @@ JOIN ethena.campaigns c ON c.id = en.campaign_id
 ORDER BY en.id;
 
 -- name: queue_age
-SELECT id, worker_id, reason,
-       CAST(julianday(:now) - julianday(created_at) AS INTEGER) AS age_days
-FROM sync.review_queue
-WHERE status = 'open'
-ORDER BY id;
+SELECT q.id, COALESCE(w.descriptor, q.worker_id) AS worker_id, q.reason,
+       CAST(julianday(:now) - julianday(q.created_at) AS INTEGER) AS age_days
+FROM sync.review_queue q
+LEFT JOIN hris.workers w ON w.id = q.worker_id
+WHERE q.status = 'open'
+ORDER BY q.id;

@@ -43,7 +43,7 @@ class JobChangeIn(BaseModel):
             return v
         v = " ".join(v.split())
         if not 2 <= len(v) <= 80:
-            raise ValueError("businessTitle must be 2 to 80 characters")
+            raise ValueError("A business title must be 2 to 80 characters.")
         return v
 
 
@@ -147,7 +147,7 @@ def create_app(db_path) -> FastAPI:
         """Workday owns people: creates an active worker and a completed Hire job change."""
         name = " ".join(body.name.split())
         if not 2 <= len(name) <= 80 or len(name.split()) < 2:
-            raise HTTPException(422, "name must be 2 to 80 characters with at least two words")
+            raise HTTPException(422, "Enter a first and last name (2 to 80 characters).")
         if body.jobProfile not in JOB_PROFILES:
             raise HTTPException(422, f"unknown jobProfile {body.jobProfile}")
         if body.location not in LOCATIONS:
@@ -156,7 +156,7 @@ def create_app(db_path) -> FastAPI:
         if body.businessTitle is not None:
             title = " ".join(body.businessTitle.split())
             if not 2 <= len(title) <= 80:
-                raise HTTPException(422, "businessTitle must be 2 to 80 characters")
+                raise HTTPException(422, "A business title must be 2 to 80 characters.")
         top = conn.execute("SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) FROM workers").fetchone()[0]
         num = (top or 1000) + 1
         wid = f"W-{num:04d}"
@@ -205,10 +205,10 @@ def create_app(db_path) -> FastAPI:
         try:
             seq = int(change_id.removeprefix("JC-"))
         except ValueError:
-            raise HTTPException(404, "job change not found")
+            raise HTTPException(404, "This change no longer exists. It may have been denied already.")
         r = conn.execute(f"{_JC_SELECT} WHERE j.seq=?", (seq,)).fetchone()
         if r is None:
-            raise HTTPException(404, "job change not found")
+            raise HTTPException(404, "This change no longer exists. It may have been denied already.")
         return r
 
     @app.get("/jobChanges/{change_id}")
@@ -222,16 +222,16 @@ def create_app(db_path) -> FastAPI:
         """Approve a pending change: it takes effect on the worker and gets a completedDate."""
         r = find_change(conn, change_id)
         if r["status"] != "pending":
-            raise HTTPException(409, "job change is already completed")
+            raise HTTPException(409, "This change was already approved.")
         w = conn.execute("SELECT * FROM workers WHERE id=?", (r["worker_id"],)).fetchone()
         if w["terminated"]:
-            raise HTTPException(422, "worker has left the company; no further job changes")
+            raise HTTPException(422, "This person has left the company, so their job cannot be changed.")
         if r["reason"] != "Termination" and not any([
                 r["job_profile"] and r["job_profile"] != w["job_profile"],
                 r["location"] and r["location"] != w["location"],
                 r["business_title"] and r["business_title"] != w["business_title"],
                 r["department"] and r["department"] != w["department"]]):
-            raise HTTPException(422, "change no longer changes anything")
+            raise HTTPException(422, "Another approved change already did this, so there is nothing left to approve. Deny it to clear it.")
         approve_change(conn, r["seq"], (body and body.completedDate) or utc_now())
         r = find_change(conn, change_id)
         return job_change_json(r, r["worker_name"])
@@ -241,7 +241,7 @@ def create_app(db_path) -> FastAPI:
         """Deny a pending change: it is deleted and the worker is untouched."""
         r = find_change(conn, change_id)
         if r["status"] != "pending":
-            raise HTTPException(409, "job change is already completed")
+            raise HTTPException(409, "This change was already approved.")
         conn.execute("DELETE FROM job_changes WHERE seq=?", (r["seq"],))
         conn.commit()
         return {"id": f"JC-{r['seq']:04d}", "status": "DENIED"}
@@ -255,7 +255,7 @@ def create_app(db_path) -> FastAPI:
         if cur_w is None:
             raise HTTPException(404, "worker not found")
         if cur_w["terminated"]:
-            raise HTTPException(422, "worker has left the company; no further job changes")
+            raise HTTPException(422, "This person has left the company, so their job cannot be changed.")
         if body.jobProfile is not None and body.jobProfile not in JOB_PROFILES:
             raise HTTPException(422, f"unknown jobProfile {body.jobProfile}")
         if body.location is not None and body.location not in LOCATIONS:

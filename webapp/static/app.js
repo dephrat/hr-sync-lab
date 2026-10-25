@@ -75,7 +75,9 @@ function bindRows(container, rows, onClick) {
   }));
 }
 function kv(pairs) {
-  return '<dl class="kv">' + pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
+  // Empty fields are left out rather than shown as blank rows.
+  return '<dl class="kv">' + pairs.filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("") + "</dl>";
 }
 const cur = { worker: null, learner: null, person: null };
 const HINT = '<p class="muted">Nothing yet. Press Run sync.</p>';
@@ -639,7 +641,7 @@ async function queueAct(b) {
       const OUT = { patched: "Ethena updated", ok: "nothing to change", created: "added to Ethena",
         queued: "queued again for another reason, see the queue", failed: "the rerun failed, see the audit trail" };
       const item = (itemsCache.find((x) => String(x.id) === String(id)) || {});
-      toast(`Mapped ${item.worker_name || "the person"} (${item.worker_id || "?"}) to ${r.learner_id}; ${OUT[r.outcome] || r.outcome}. Item closed.${r.note ? " " + r.note : ""}`);
+      toast(`${item.worker_name || "The person"} is now matched to Ethena account ${r.learner_id}; ${OUT[r.outcome] || r.outcome}.${r.note ? " " + r.note : ""}`);
     }
     await Promise.all([loadQueue(), loadState(), loadDrift()]);
     await refreshCards();
@@ -671,7 +673,8 @@ async function showPerson(w) {
     <div class="card"><h4>Ethena learner</h4>${lcard}</div>
     <div class="card"><h4>Enrollments</h4>${(d.enrollments || []).length ? table(d.enrollments, [
       ["Campaign", (x) => esc(x.campaignName)], ["Status", statusOf],
-      ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
+      ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : (get(wk, "workerStatus.terminated")
+        ? '<p class="muted">none: unfinished courses were removed when they left</p>' : '<p class="muted">none</p>')}</div></div>
     <div class="sy-sub"><h4>Sync activity, newest first</h4>
     <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show all</label></p>
     <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), AUDIT_COLS) : "<p>No sync activity for this worker yet</p>") + "</div></div>" +
@@ -693,9 +696,16 @@ const ACTION_WORDS = { load_worker: "Read the Workday record", map_learner: "Mat
   queue: "Sent to manual review", skip: "Already handled" };
 const OUTCOME_WORDS = { ok: "done", skipped: "nothing to change", queued: "waiting for a person", failed: "failed" };
 const coded = (words, code) => `<span title="${esc(code || "")}">${esc(words[code] || code || "")}</span>`;
+const MATCH_WORDS = { email: "matched by work email", manual: "matched by a person in manual review",
+  created: "new account created" };
+function auditDetail(a) {
+  if (a.action === "map_learner") return MATCH_WORDS[a.detail] || a.detail;
+  if (a.action === "terminate_learner") return "";
+  return a.detail;
+}
 const statusOf = (x) => coded(STATUS_WORDS, isLate(x) && !isDone(x) ? "PAST_DEADLINE" : x.completionStatus);
 const AUDIT_COLS = [["Time", (a) => esc(when(a.created_at))], ["What the sync did", (a) => coded(ACTION_WORDS, a.action)],
-  ["Result", (a) => coded(OUTCOME_WORDS, a.outcome)], ["Detail", (a) => esc(a.detail)]];
+  ["Result", (a) => coded(OUTCOME_WORDS, a.outcome)], ["Detail", (a) => esc(auditDetail(a))]];
 async function explain(ev, workerId) {
   ev.preventDefault();
   $("ex-out").innerHTML = '<p class="muted">Working...</p>';

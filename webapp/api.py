@@ -269,7 +269,7 @@ def resolve(item_id: int, body: ResolveIn, request: Request):
             return _err(404, str(exc))
         except ClientError as exc:
             if exc.status == 404:
-                return _err(404, f"learner {body.learner_id} not found in Ethena")
+                return _err(404, f"There is no Ethena account {body.learner_id}.")
             return _err(502, str(exc))
         except (HrSyncClientError, httpx.HTTPError) as exc:
             return _err(502, str(exc))
@@ -280,7 +280,7 @@ def skip(item_id: int, body: SkipIn, request: Request):
     at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with WRITE_LOCK, _Store(request) as conn:
         if not store.skip_item(conn, item_id, body.note, at):
-            return _err(404, f"queue item {item_id} not found or not open")
+            return _err(404, f"That item was already dealt with.")
     return {"item_id": item_id, "status": "skipped"}
 
 
