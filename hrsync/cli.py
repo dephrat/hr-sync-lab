@@ -93,9 +93,25 @@ def _web(settings: Settings, args) -> int:
     import uvicorn
 
     from webapp.app import create_app
+    from webapp.visitors import Site
 
-    uvicorn.run(create_app(settings), host=args.host or settings.web_host,
+    uvicorn.run(Site(settings, create_app), host=args.host or settings.web_host,
                 port=args.port or settings.web_port, log_level="warning")
+    return 0
+
+
+def _visitors(settings: Settings, args) -> int:
+    from webapp.visitors import invited, visitor_settings
+
+    for name in invited(settings):
+        s = visitor_settings(settings, name)
+        if not Path(s.hris_db).exists():
+            print(f"{name}: not opened yet")
+            continue
+        conn = store.connect(s.sync_db)
+        last = store.last_run(conn)
+        conn.close()
+        print(f"{name}: opened; " + (f"last sync {last['started_at']}" if last else "never ran sync"))
     return 0
 
 
@@ -190,6 +206,8 @@ def main(argv=None) -> int:
     w.add_argument("--host")
     w.add_argument("--port", type=int)
     w.set_defaults(fn=_web)
+    v = sub.add_parser("visitors", help="list personal demo links and whether each was used")
+    v.set_defaults(fn=_visitors)
     r = sub.add_parser("run")
     r.add_argument("--no-create", action="store_true")
     r.add_argument("--changes-only", action="store_true",
