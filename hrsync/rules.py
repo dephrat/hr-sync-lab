@@ -55,7 +55,7 @@ def office_row(data: dict, office: str) -> dict:
     if not loc:
         return {"office": office, "country": None, "region": None}
     return {"office": office, "country": loc.get("country"),
-            "region": loc.get("state") or loc.get("customCategory")}
+            "region": loc.get("state") or loc.get("customCategory") or NO_REGION}
 
 
 def job_row(data: dict, job: str, label: str) -> dict:
@@ -64,12 +64,17 @@ def job_row(data: dict, job: str, label: str) -> dict:
             "isManager": None if prof is None else prof.get("isManager")}
 
 
+# An office can deliberately translate to a country with no province or state: Ethena then
+# gets the country only, and decides by itself what that earns.
+NO_REGION = "NONE"
+
+
 def set_office(data: dict, office: str, country, region) -> None:
     if country is None:
         data["locations"].pop(office, None)
         return
     entry = {"country": country}
-    if region is not None:
+    if region not in (None, NO_REGION):
         entry["state" if country == "USA" else "customCategory"] = region
     data["locations"][office] = entry
 

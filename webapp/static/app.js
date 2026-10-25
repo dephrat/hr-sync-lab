@@ -448,7 +448,7 @@ async function loadRules() {
     (o.country ? "" : ' <span class="tag-amber">not set</span>') + "</td>" +
     `<td><select class="r-country" aria-label="Country for ${esc(o.office)}">${opts(ch.countries, o.country, "not set")}</select></td>` +
     `<td><select class="r-region" aria-label="Province or state for ${esc(o.office)}"${o.country ? "" : " disabled"}>` +
-    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td>` +
+    `${opts(o.country ? [...ch.regions[o.country], { value: "NONE", label: "None (country only)" }] : [], o.region, "not set")}</select></td>` +
     `<td>${o.country ? courses(o.courses) : '<span class="muted">nobody here gets courses until this is set</span>'}</td></tr>`;
   const triple = [{ value: "yes", label: "yes" }, { value: "no", label: "no" }];
   const job = (j) => `<tr data-job="${esc(j.job)}"><td>${esc(j.label)}` +
@@ -613,15 +613,16 @@ function outcomeOf(q) {
   return q.status;
 }
 function queueActions(q) {
+  // Each item has one real fix. Deciding someone needs no training is Ethena's call, so there
+  // is no Dismiss: a course-rule item clears when the rule exists, a duplicate when an account is picked.
   const note = `<div class="row"><input data-note="${esc(q.id)}" placeholder="note (optional)" size="28"></div>`;
-  const dismiss = `<button data-act="skip" data-id="${esc(q.id)}">Dismiss</button>`;
-  if (q.needs_rule) return '<div class="qa"><p class="qa-do">Add this office or job under Course rules (further down), then run sync. If this person needs no training, dismiss it.</p>' +
-    note + `<div class="row">${dismiss}</div></div>`;
+  if (q.needs_rule) return '<div class="qa"><p class="qa-do">Add this office or job under Course rules (further down), then run sync. ' +
+    'If it should get no location-based training, set its province or state to None.</p></div>';
   const cands = q.candidates || [];
   const sel = cands.length ? `<select data-sel="${esc(q.id)}"><option value="">pick an account</option>${cands.map((c) =>
     `<option value="${esc(c.id)}">${esc([c.id, c.name, c.email].filter(Boolean).join(" · "))}</option>`).join("")}</select> ` : "";
   return `<div class="qa"><p class="qa-do">Pick which Ethena account is really this person.</p><div class="row">${sel}<input data-free="${esc(q.id)}" placeholder="or type an account id" size="20">
-    </div>${note}<div class="row"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Use this account</button> ${dismiss}</div></div>`;
+    </div>${note}<div class="row"><button class="primary" data-act="resolve" data-id="${esc(q.id)}">Use this account</button></div></div>`;
 }
 async function queueAct(b) {
   const id = b.dataset.id, box = $("sy-queue");
