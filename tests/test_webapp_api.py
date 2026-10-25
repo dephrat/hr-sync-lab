@@ -261,19 +261,12 @@ def test_get_rules_covers_everything(client):
     by = {o["office"]: o for o in r["offices"]}
     assert {k: by["Toronto, ON"][k] for k in ("office", "country", "region")} == {
         "office": "Toronto, ON", "country": "CAN", "region": "ON"}
-    assert "Harassment Prevention (Ontario)" in by["Toronto, ON"]["courses"]
-    assert by["Vancouver, BC"]["courses"] == []
-    jobs = {j["job"]: j for j in r["jobs"]}
-    assert "Manager Fundamentals" in jobs["Sales_Team_Lead"]["courses"]
-    assert "Workplace Safety (Warehouse)" in jobs["Warehouse_Associate"]["courses"]
-    assert r["everyone"] == ["Data Privacy Essentials"]
+    assert "courses" not in by["Toronto, ON"] and "everyone" not in r
     assert by["Austin, TX"]["region"] == "TX" and by["Vancouver, BC"]["country"] is None
     jobs = {j["job"]: j for j in r["jobs"]}
     assert jobs["Warehouse_Supervisor"]["isManager"] is True
     assert "category" not in jobs["Warehouse_Supervisor"] and "categories" not in r["choices"]
-    assert sorted(jobs["Warehouse_Supervisor"]["courses"]) == ["Manager Fundamentals", "Workplace Safety (Warehouse)"]
-    assert jobs["Warehouse_Associate"]["courses"] == ["Workplace Safety (Warehouse)"]
-    assert jobs["Sales_Rep"]["courses"] == [] and jobs["Sales_Rep"]["label"] == "Sales Rep"
+    assert jobs["Sales_Rep"]["label"] == "Sales Rep"
     assert {c["value"] for c in r["choices"]["regions"]["CAN"]} == {"ON", "BC", "AB", "QC"}
 
 

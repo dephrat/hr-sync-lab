@@ -63,9 +63,6 @@ def test_second_group_enrolls_bc(client, settings):
     assert bc <= _enrolled(settings, "C000001")
     stored = json.loads(c.execute("SELECT audience FROM campaigns WHERE id='C000001'").fetchone()[0])
     assert len(stored) == 2 and stored[1] == {"country": ["CAN"], "customCategory": ["BC"]}
-    rules = client.get("/api/rules").json()
-    assert "Harassment Prevention (Ontario)" in next(
-        o for o in rules["offices"] if o["office"] == "Toronto, ON")["courses"]
 
 
 def _states(settings, cid):

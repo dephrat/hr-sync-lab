@@ -14,7 +14,7 @@ from hrsync import engine, store
 from hrsync import rules as rules_mod
 from ethena import db as ethena_db
 from ethena.db import normalize_audience
-from hris.db import DEPARTMENTS, JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT, profile_descriptor
+from hris.db import DEPARTMENTS, JOB_PROFILES, LOCATIONS, profile_descriptor
 from hrsync.engine import ATTR_KEYS
 from hrsync.clients import ClientError, HrSyncClientError
 from mcp_server import tools
@@ -560,71 +560,13 @@ class JobIn(BaseModel):
     isManager: StrictBool | None = None
 
 
-def _audiences(b) -> list[tuple[str, list[dict]]]:
-    """(campaignName, groups) for every campaign. Read from the mock's sqlite for display
-    only; the Ethena API does not expose audiences and the sync never reads them."""
-    conn = sqlite3.connect(b.settings.ethena_db)
-    try:
-        return [(name, normalize_audience(json.loads(aud))) for name, aud in
-                conn.execute("SELECT campaign_name, audience FROM campaigns WHERE status='ACTIVE'")]
-    finally:
-        conn.close()
-
-
-def _office_courses(auds, row) -> list[str]:
-    """Location-based courses an office leads to: campaigns where any group keys on
-    country/region and matches."""
-    if not row.get("country"):
-        return []
-    region = row.get("region")
-    out = []
-    for name, groups in auds:
-        for a in groups:
-            if not ({"country", "state", "customCategory"} & a.keys()):
-                continue
-            if "country" in a and row["country"] not in a["country"]:
-                continue
-            if "state" in a and region not in a["state"]:
-                continue
-            if a.get("customCategory") and region not in a["customCategory"]:
-                continue
-            if "isManager" in a:
-                name += " if a manager" if a["isManager"] else " if not a manager"
-            out.append(name)
-            break
-    return out
-
-
-def _job_courses(auds, row) -> list[str]:
-    """Role-based courses a job leads to: campaigns where any group keys only on manager
-    and department and matches."""
-    out = []
-    dept = PROFILE_DEPARTMENT.get(row["job"])
-    for name, groups in auds:
-        for a in groups:
-            if not a or not a.keys() <= {"isManager", "department"}:
-                continue
-            if "isManager" in a and row.get("isManager") is not a["isManager"]:
-                continue
-            if "department" in a and dept not in a["department"]:
-                continue
-            out.append(name)
-            break
-    return out
-
-
 @router.get("/rules")
 def get_rules(request: Request):
     b = _bundle(request)
     data = _rules_data(b)
-    auds = _audiences(b)
     offices = [rules_mod.office_row(data, o) for o in LOCATIONS]
     jobs = [rules_mod.job_row(data, j, profile_descriptor(j)) for j in JOB_PROFILES]
-    for r in offices:
-        r["courses"] = _office_courses(auds, r)
-    for r in jobs:
-        r["courses"] = _job_courses(auds, r)
-    return {"offices": offices, "jobs": jobs, "everyone": [n for n, gs in auds if any(not g for g in gs)],
+    return {"offices": offices, "jobs": jobs,
             "choices": rules_mod.CHOICES, "departments": DEPARTMENTS}
 
 

@@ -442,25 +442,22 @@ const opts = (list, sel, blank) => (blank ? `<option value="">${blank}</option>`
   list.map((o) => `<option value="${esc(o.value)}"${o.value === sel ? " selected" : ""}>${esc(o.label)}</option>`).join("");
 async function loadRules() {
   const r = await api("api/rules"), ch = r.choices;
-  const courses = (list) => (list || []).length
-    ? list.map((c) => `<span class="tpill">${esc(c)}</span>`).join(" ") : '<span class="muted">none extra</span>';
   const office = (o) => `<tr data-office="${esc(o.office)}"><td>${esc(o.office)}` +
     (o.country ? "" : ' <span class="tag-amber">not set</span>') + "</td>" +
     `<td><select class="r-country" aria-label="Country for ${esc(o.office)}">${opts(ch.countries, o.country, "not set")}</select></td>` +
     `<td><select class="r-region" aria-label="Province or state for ${esc(o.office)}"${o.country ? "" : " disabled"}>` +
-    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td>` +
-    `<td>${o.country ? courses(o.courses) : '<span class="muted">nobody here gets courses until this is set</span>'}</td></tr>`;
+    `${opts(o.country ? ch.regions[o.country] : [], o.region, "not set")}</select></td></tr>`;
   const triple = [{ value: "yes", label: "yes" }, { value: "no", label: "no" }];
   const job = (j) => `<tr data-job="${esc(j.job)}"><td>${esc(j.label)}` +
     (j.isManager === null ? ' <span class="tag-amber">not set</span>' : "") + "</td>" +
     `<td><select class="r-mgr" aria-label="Manager for ${esc(j.label)}">${opts(triple, j.isManager === null ? "" : j.isManager ? "yes" : "no", "not set")}</select></td>` +
-    `<td>${courses(j.courses)}</td></tr>`;
-  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th><th><a href="#ethena/courses">So they get (set in Ethena)</a></th></tr>` +
-    `<tr class="sub"><th>${first}</th><th>${a}</th>${b ? `<th>${b}</th>` : ""}<th></th></tr></thead>`;
+    "</tr>";
+  const head = (first, a, b) => `<thead><tr><th>Workday says</th><th colspan="${b ? 2 : 1}">Ethena is told</th></tr>` +
+    `<tr class="sub"><th>${first}</th><th>${a}</th>${b ? `<th>${b}</th>` : ""}</tr></thead>`;
   $("sy-rules").innerHTML =
     `<div class="rblock"><h4>By office</h4><div class="tablewrap"><table class="rules">${head("Office", "Country", "Province or state")}<tbody>${r.offices.map(office).join("")}</tbody></table></div></div>` +
     `<div class="rblock"><h4>By job</h4><div class="tablewrap"><table class="rules">${head("Job", "Manager")}<tbody>${r.jobs.map(job).join("")}</tbody></table></div></div>` +
-    `<p class="muted">Everyone also gets: ${(r.everyone || []).map(esc).join(", ") || "nothing else"}.</p>`;
+    '<p class="muted">Ethena decides which courses these details lead to. See <a href="#ethena/courses">Ethena\'s Courses page</a>.</p>';
   const saved = async (url, body) => {
     await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     toast("Saved. Run sync to apply it.");
