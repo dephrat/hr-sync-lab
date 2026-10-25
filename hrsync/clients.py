@@ -136,13 +136,14 @@ class EthenaClient:
     def list_campaigns(self) -> list[dict]:
         return self._list("/training-campaigns")
 
-    def campaigns_for_learner(self, learner_id: str) -> list[dict]:
-        """The learner's courses, without REMOVED ones: a removed enrollment is a record of a
-        course taken away, never a course the person holds."""
+    def campaigns_for_learner(self, learner_id: str, include_removed: bool = False) -> list[dict]:
+        """The learner's courses, without REMOVED ones unless asked: a removed enrollment is a
+        record of a course taken away, never a course the person holds. Displays that show the
+        full record pass include_removed=True."""
         camps = {c["id"]: c for c in self.list_campaigns()}
         out = []
         for ltc in self._list("/learner-training-campaigns", learnerId=learner_id):
-            if ltc.get("completionStatus") == "REMOVED":
+            if ltc.get("completionStatus") == "REMOVED" and not include_removed:
                 continue
             c = camps.get(ltc["trainingCampaignId"], {})
             out.append({**ltc, "courseName": c.get("courseName"),

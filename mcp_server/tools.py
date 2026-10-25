@@ -31,7 +31,7 @@ def get_learner_status(hris, learning, store_conn, worker_id: str) -> dict:
         lid = found[0]["id"]
     out["learner"] = learning.get_learner(lid)
     out["campaigns"] = [{k: c.get(k) for k in ("campaignName", "completionStatus", "deadline")}
-                        for c in learning.campaigns_for_learner(lid)]
+                        for c in learning.campaigns_for_learner(lid, include_removed=True)]
     return out
 
 

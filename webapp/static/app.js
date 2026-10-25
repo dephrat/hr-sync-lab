@@ -673,8 +673,7 @@ async function showPerson(w) {
     <div class="card"><h4>Ethena learner</h4>${lcard}</div>
     <div class="card"><h4>Enrollments</h4>${(d.enrollments || []).length ? table(d.enrollments, [
       ["Campaign", (x) => esc(x.campaignName)], ["Status", statusOf],
-      ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : (get(wk, "workerStatus.terminated")
-        ? '<p class="muted">none: unfinished courses were removed when they left</p>' : '<p class="muted">none</p>')}</div></div>
+      ["Deadline", (x) => esc(String(x.deadline || "").slice(0, 10))]]) : '<p class="muted">none</p>'}</div></div>
     <div class="sy-sub"><h4>Sync activity, newest first</h4>
     <p class="muted"><label class="inline"><input type="checkbox" id="sy-allaudit"> show all</label></p>
     <div id="sy-audit">` + ((d.audit || []).filter((a) => a.outcome !== "skipped").length ? table(d.audit.filter((a) => a.outcome !== "skipped"), AUDIT_COLS) : "<p>No sync activity for this worker yet</p>") + "</div></div>" +
