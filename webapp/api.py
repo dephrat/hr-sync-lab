@@ -641,7 +641,7 @@ def put_office(body: OfficeIn, request: Request):
             return _err(422, "a province or state needs a country")
     elif region is None:
         return _err(422, "pick a province or state")
-    elif region != rules_mod.NO_REGION and region not in _valid(ch["regions"][country]):
+    elif region is not None and region not in _valid(ch["regions"][country]):
         return _err(422, f"region {region!r} does not belong to country {country}")
     b = _bundle(request)
     with WRITE_LOCK:

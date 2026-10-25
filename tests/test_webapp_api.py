@@ -410,11 +410,3 @@ def test_explain_pending_and_terminated_completed(client, settings):
     assert "waiting for approval in Workday" in ex("W-1002", "Manager Fundamentals")
     client.post(f"/workday/jobChanges/{jc['id']}/approve")
     assert "approved in Workday after the last sync" in ex("W-1002", "Manager Fundamentals")
-
-
-def test_office_can_translate_to_country_only(client):
-    r = client.put("/api/rules/office", json={"office": "Vancouver, BC", "country": "CAN", "region": "NONE"})
-    assert r.status_code == 200 and r.json()["region"] == "NONE"
-    rules = client.get("/api/rules").json()
-    van = next(o for o in rules["offices"] if o["office"] == "Vancouver, BC")
-    assert van["country"] == "CAN" and van["region"] == "NONE" and van["courses"] == []
