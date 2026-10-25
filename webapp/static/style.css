@@ -282,3 +282,6 @@ body:has(#tour:not([hidden])) main { padding-bottom: 200px; }
 .tour-x { padding: 2px 10px; }
 .tour-spot { outline: 3px solid #b26a00 !important; outline-offset: 3px; border-radius: 4px; }
 tr.tour-spot td { background: #fff4d6 !important; }
+.tour-later { margin: 8px 0 0; font-size: 12px; }
+#tour.welcome { top: 0; bottom: 0; max-width: none; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); pointer-events: auto; }
+#tour.welcome .tour-card { max-width: 480px; margin: 16px; padding: 18px 22px; border-left-width: 1px; }

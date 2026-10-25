@@ -774,7 +774,7 @@ const tour = (() => {
   }
   function draw() {
     const st = STEPS[i], last = i === STEPS.length - 1;
-    box().hidden = false;
+    box().hidden = false; box().classList.remove("welcome");
     box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${esc(st.title)}</b>` +
       `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${st.body}</p>` +
       `<div class="row">${i > 0 ? '<button class="plain tour-back">Back</button>' : ""}` +
@@ -800,7 +800,7 @@ const tour = (() => {
     const st = STEPS[i];  // already done (say, by clicking ahead): move straight on
     if (st && st.wait && st.check && (await st.check()) && i === n) go(i + 1);
   }
-  function close() { i = -1; box().hidden = true; box().innerHTML = ""; spot(false); store.set({ step: -1, seen: true }); }
+  function close() { i = -1; box().hidden = true; box().classList.remove("welcome"); box().innerHTML = ""; spot(false); store.set({ step: -1, seen: true }); }
   async function start() {
     await resetData();
     if (current() !== "sync") location.hash = "sync"; else route();
@@ -819,7 +819,21 @@ const tour = (() => {
       await start();
     }));
     const saved = store.get();
-    if (saved && saved.step >= 0) { i = saved.step; draw(); }
+    if (saved && saved.step >= 0) { i = saved.step; draw(); return; }
+    if (!saved) welcome();
+  }
+  function welcome() {
+    // First visit only: offer the walkthrough. Nothing has been changed yet, so starting it
+    // needs no warning about the reset.
+    store.set({ step: -1, seen: true });
+    box().hidden = false; box().classList.add("welcome");
+    box().innerHTML = '<div class="tour-card"><div class="tour-head"><b>First time here?</b></div>' +
+      "<p>This is a working demo of two HR systems kept in sync: Workday, where people's records live, and Ethena, which assigns training. " +
+      "A short walkthrough shows what it does, about three minutes.</p>" +
+      '<div class="row"><button class="primary tour-go">Show me around</button><button class="plain tour-x">No thanks, I\'ll explore</button></div>' +
+      '<p class="muted tour-later">You can start it any time with the Walkthrough button at the top.</p></div>';
+    box().querySelector(".tour-go").onclick = guard(start);
+    box().querySelector(".tour-x").onclick = close;
   }
   return { init, saw };
 })();
