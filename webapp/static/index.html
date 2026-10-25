@@ -15,8 +15,10 @@ if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' +
     <span class="pill">mock systems, fake data</span>
     <span class="hint">Try: change someone's job in Workday, run Sync, then look at Ethena.</span>
     <button id="sy-bad" class="warn" title="Job changes Ethena has not heard about, a duplicate account, missing people, overdue training">Demo a bad day</button>
+    <button id="tour-open" class="plain">Walkthrough</button>
     <button id="reset" class="plain">Reset demo</button>
   </div>
+  <div id="tour" class="wrap" hidden></div>
   <nav class="wrap tabs">
     <a href="#workday" data-tab="workday">Workday (mock)</a>
     <a href="#sync" data-tab="sync">Sync</a>

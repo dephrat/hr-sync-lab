@@ -462,12 +462,19 @@ async function loadRules() {
     await api(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     toast("Saved. Run sync to apply it.");
     await Promise.all([loadRules(), loadDrift()]);
+    tour.saw("rule");
   };
   $("sy-rules").querySelectorAll("tr[data-office]").forEach((tr) => {
     const country = tr.querySelector(".r-country"), region = tr.querySelector(".r-region");
     const send = () => guard(saved)("api/rules/office", { office: tr.dataset.office,
       country: country.value || null, region: country.value ? region.value || null : null });
-    country.addEventListener("change", () => { region.value = ""; send(); });
+    // A country alone is not a complete translation, so picking one fills the province or
+    // state list and saves only once a region is picked. Clearing the country saves at once.
+    country.addEventListener("change", () => {
+      if (!country.value) { send(); return; }
+      region.innerHTML = opts(ch.regions[country.value], "", "pick one");
+      region.disabled = false; region.focus();
+    });
     region.addEventListener("change", send);
   });
   $("sy-rules").querySelectorAll("tr[data-job]").forEach((tr) => {
@@ -554,6 +561,7 @@ async function runSync() {
     showRun(await api("api/run", { method: "POST" }));
     await Promise.all([loadState(), loadQueue(), loadDrift()]);
     await refreshCards();
+    tour.saw("run");
   } finally { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = label; }
 }
 async function badDay() {
@@ -565,6 +573,7 @@ async function badDay() {
     toast("A bad day just happened. Open the Sync tab to see what is out of sync.");
     await route(); // refresh whichever tab is showing
     await refreshCards();
+    tour.saw("badday");
   } finally { btn.disabled = false; btn.classList.remove("busy"); }
 }
 function ageOf(ts) {
@@ -642,6 +651,7 @@ async function queueAct(b) {
     }
     await Promise.all([loadQueue(), loadState(), loadDrift()]);
     await refreshCards();
+    tour.saw("resolve");
   } finally { b.disabled = false; b.classList.remove("busy"); }
 }
 async function searchPeople() {
@@ -724,6 +734,96 @@ async function renderReport() {
   }).join("");
 }
 
+// ---------- Walkthrough ----------
+// A short guided story pinned under the top bar. It resets this copy of the demo first, so
+// every step lands on the same people. Steps that ask you to do something tick themselves
+// off when you do it; steps that only ask you to look have a Next button.
+const tour = (() => {
+  const KEY = "hrsync-tour";
+  const store = { get() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
+  const open = (tab, q) => `<a href="#${tab}" data-look="${tab}" data-q="${esc(q)}">`;
+  const STEPS = [
+    { tab: "sync", title: "Everything matches",
+      body: "This is the sync between Workday, where HR keeps people's records, and Ethena, which hands out training. Right now the two agree: nobody is out of sync. Next, you will make a mess." },
+    { tab: "sync", title: "Press Demo a bad day", spot: "#sy-bad", wait: "badday",
+      body: "It drops a typical busy week into Workday: promotions, moves, someone leaving, new hires, and one person with two Ethena accounts. None of it has reached Ethena yet." },
+    { tab: "sync", title: "Look at one person in both systems",
+      body: `Ethan Lindqvist was promoted to Engineering Manager. ${open("workday", "Ethan Lindqvist")}See him in Workday</a>, then ${open("ethena", "Ethan Lindqvist")}in Ethena</a>: Ethena still thinks he is not a manager, so he has none of the manager training.` },
+    { tab: "sync", title: "Press Run sync", spot: "#sy-run", wait: "run",
+      body: "The sync reads every change in Workday and writes it to Ethena. Most of the mess is fixed in one click, and each fix gets a plain sentence under What the last run did. A few things it will not guess at; those go to manual review." },
+    { tab: "sync", title: "Tell the sync where Vancouver is", spot: 'tr[data-office="Vancouver, BC"]', wait: "rule", check: async () => {
+        const r = await api("api/rules"); const v = r.offices.find((o) => o.office === "Vancouver, BC");
+        return v && v.country === "CAN" && v.region === "BC"; },
+      body: "Liam Moreau moved to the Vancouver office, which the sync has never seen. It cannot know which province that is, so it stopped. In the highlighted row, set Country to Canada and Province or state to British Columbia." },
+    { tab: "sync", title: "Run sync again", spot: "#sy-run", wait: "run",
+      body: "Now the sync knows where Vancouver is, so it tells Ethena that Liam is in British Columbia. The Vancouver item leaves manual review on its own." },
+    { tab: "sync", title: "Pick the real account", spot: "#sy-queue", wait: "resolve", check: async () => (await api("api/state")).open_queue === 0,
+      body: "One item is left: two Ethena accounts share one email, and a computer should not guess which is the real person. Pick an account and press Use this account." },
+    { tab: "ethena", title: "See what Ethena did",
+      body: `${open("ethena", "Ethan Lindqvist")}Ethan</a> now has the manager courses, and ${open("ethena", "Liam Moreau")}Liam</a> has the British Columbia course. The sync never chose a course. It sent the facts, and Ethena decided the training from its own <a href="#ethena/courses">course settings</a>.` },
+    { tab: "sync", title: "That's the whole job",
+      body: "Without this, someone copies every hire, promotion and move from Workday into Ethena by hand, and mistakes show up as missed training. Here it runs in one click, it is safe to run again, it stops and asks when it should not guess, and every change it made is recorded under Look up a person." },
+  ];
+  let i = -1;
+  const box = () => $("tour");
+  function spot(on) {
+    document.querySelectorAll(".tour-spot").forEach((e) => e.classList.remove("tour-spot"));
+    const s = on && STEPS[i] && STEPS[i].spot && document.querySelector(STEPS[i].spot);
+    if (s) { s.classList.add("tour-spot"); s.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  }
+  function draw() {
+    const st = STEPS[i], last = i === STEPS.length - 1;
+    box().hidden = false;
+    box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${esc(st.title)}</b>` +
+      `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${st.body}</p>` +
+      `<div class="row">${i > 0 ? '<button class="plain tour-back">Back</button>' : ""}` +
+      (st.wait ? '<span class="muted">This moves on by itself when you do it.</span>'
+        : `<button class="primary tour-next">${last ? "Finish" : "Next"}</button>`) + "</div></div>";
+    box().querySelector(".tour-x").onclick = close;
+    const back = box().querySelector(".tour-back"); if (back) back.onclick = () => go(i - 1);
+    const next = box().querySelector(".tour-next"); if (next) next.onclick = () => (last ? close() : go(i + 1));
+    box().querySelectorAll("a[data-look]").forEach((a) => a.addEventListener("click", (ev) => {
+      ev.preventDefault(); look(a.dataset.look, a.dataset.q); }));
+    if (current() !== st.tab) location.hash = st.tab;
+    setTimeout(() => spot(true), 400);
+  }
+  function look(tab, q) {
+    const input = tab === "workday" ? $("wd-q") : $("et-q");
+    input.value = q;
+    window.scrollTo({ top: 0 });
+    if (current() === tab) { input.dispatchEvent(new Event("input")); return; }
+    location.hash = tab;
+  }
+  async function go(n) {
+    i = n; store.set({ step: i, seen: true }); draw();
+    const st = STEPS[i];  // already done (say, by clicking ahead): move straight on
+    if (st && st.wait && st.check && (await st.check()) && i === n) go(i + 1);
+  }
+  function close() { i = -1; box().hidden = true; box().innerHTML = ""; spot(false); store.set({ step: -1, seen: true }); }
+  async function start() {
+    await resetData();
+    if (current() !== "sync") location.hash = "sync"; else route();
+    go(0);
+  }
+  async function saw(what) {
+    const st = STEPS[i];
+    if (!st || st.wait !== what) return;
+    if (st.check && !(await st.check())) return;
+    go(i + 1);
+  }
+  function init() {
+    $("tour-open").addEventListener("click", guard(async () => {
+      if (i >= 0 && !confirm("Start the walkthrough again from the beginning? This resets the demo.")) return;
+      if (i < 0 && !confirm("The walkthrough starts from a fresh copy of the demo, so anything you changed is reset. Start it?")) return;
+      await start();
+    }));
+    const saved = store.get();
+    if (saved && saved.step >= 0) { i = saved.step; draw(); }
+  }
+  return { init, saw };
+})();
+
 // ---------- Routing, reset, wiring ----------
 const RENDER = { workday: renderWorkday, ethena: renderEthena, sync: renderSync, report: renderReport };
 function current() { const t = location.hash.slice(1).split("/")[0]; return RENDER[t] ? t : "workday"; }
@@ -736,6 +836,11 @@ function route() {
 }
 async function reset() {
   if (!confirm("Reset the demo? All three databases are reseeded.")) return;
+  const r = await resetData();
+  toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
+  route();
+}
+async function resetData() {
   const r = await api("api/reset", { method: "POST" });
   campaignCache = null;
   ["wd-detail", "et-detail", "sy-detail", "sy-results"].forEach((id) => { $(id).innerHTML = ""; });
@@ -743,8 +848,7 @@ async function reset() {
   ["wd-q", "et-q", "sy-q"].forEach((id) => { $(id).value = ""; });
   seq.wd++; seq.sy++;
   cur.worker = cur.learner = cur.person = null;
-  toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
-  route();
+  return r;
 }
 
 window.addEventListener("hashchange", route);
@@ -757,6 +861,7 @@ $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 initHire();
 route();
+tour.init();
 
 async function refreshCards() {
   if (cur.learner) await showLearner(cur.learner);

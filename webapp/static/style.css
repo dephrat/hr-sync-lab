@@ -271,3 +271,14 @@ a.g-add { font-size: 13px; }
 .why { margin-top: 14px; border: 1px solid #c9d6e8; background: #f3f7fc; border-radius: 4px; padding: 10px 14px; }
 .why select { min-height: 34px; }
 #sy-results:not(:empty) { margin-top: 4px; }
+
+/* Walkthrough */
+#tour { position: fixed; left: 0; right: 0; bottom: 12px; z-index: 50; max-width: 820px; margin: 0 auto; pointer-events: none; }
+#tour .tour-card { pointer-events: auto; }
+body:has(#tour:not([hidden])) main { padding-bottom: 200px; }
+.tour-card { background: #fffbea; border: 1px solid #e7c55a; border-left: 5px solid #b26a00; border-radius: 6px; padding: 10px 14px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.tour-card p { margin: 6px 0 10px; max-width: 760px; }
+.tour-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.tour-x { padding: 2px 10px; }
+.tour-spot { outline: 3px solid #b26a00 !important; outline-offset: 3px; border-radius: 4px; }
+tr.tour-spot td { background: #fff4d6 !important; }
