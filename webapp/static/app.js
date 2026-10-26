@@ -775,16 +775,15 @@ const tour = (() => {
     const s = on && STEPS[i] && STEPS[i].spot && document.querySelector(STEPS[i].spot);
     if (s) { s.classList.add("tour-spot"); s.scrollIntoView({ block: "center", behavior: "smooth" }); }
   }
-  function draw(revisit = false) {
+  function draw() {
     const st = STEPS[i], last = i === STEPS.length - 1;
     box().hidden = false; box().classList.remove("welcome");
     box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${chips(esc(st.title))}</b>` +
       `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${chips(st.body)}</p>` +
-      `<div class="row">${i > 0 ? '<button class="plain tour-back">Back</button>' : ""}` +
-      (st.wait && !revisit ? '<span class="muted">This moves on by itself when you do it.</span>'
+      '<div class="row">' +
+      (st.wait ? '<span class="muted">This moves on by itself when you do it.</span>'
         : `<button class="primary tour-next">${last ? "Finish" : "Next"}</button>`) + "</div></div>";
     box().querySelector(".tour-x").onclick = close;
-    const back = box().querySelector(".tour-back"); if (back) back.onclick = () => go(i - 1, true);
     const next = box().querySelector(".tour-next"); if (next) next.onclick = () => (last ? close() : go(i + 1));
     box().querySelectorAll("a[data-look]").forEach((a) => a.addEventListener("click", (ev) => {
       ev.preventDefault(); look(a.dataset.look, a.dataset.q); }));
@@ -798,9 +797,8 @@ const tour = (() => {
     if (current() === tab) { input.dispatchEvent(new Event("input")); return; }
     location.hash = tab;
   }
-  async function go(n, stay = false) {
-    i = n; store.set({ step: i, seen: true }); draw(stay);
-    if (stay) return;  // Back shows the earlier step even if it is already done
+  async function go(n) {
+    i = n; store.set({ step: i, seen: true }); draw();
     const st = STEPS[i];  // already done (say, by clicking ahead): move straight on
     if (st && st.wait && st.check && (await st.check()) && i === n) go(i + 1);
   }
@@ -819,14 +817,23 @@ const tour = (() => {
     go(i + 1);
   }
   function init() {
-    $("tour-open").addEventListener("click", guard(async () => {
-      if (i >= 0 && !confirm("Start the walkthrough again from the beginning? This resets the demo.")) return;
-      if (i < 0 && !confirm("The walkthrough starts from a fresh copy of the demo, so anything you changed is reset. Start it?")) return;
-      await start();
-    }));
+    $("tour-open").addEventListener("click", () => ask(i >= 0
+      ? "Start the walkthrough again from step 1? This resets the demo to a fresh copy."
+      : "The walkthrough starts from a fresh copy of the demo, so anything you changed here is reset."));
     const saved = store.get();
     if (saved && saved.step >= 0) { i = saved.step; draw(); return; }
     if (!saved) welcome();
+  }
+  function ask(text) {
+    // The same centred pop-up as the welcome, used before anything that resets the demo.
+    const was = i;
+    spot(false);
+    box().hidden = false; box().classList.add("welcome");
+    box().innerHTML = '<div class="tour-card"><div class="tour-head"><b>Start the walkthrough?</b></div>' +
+      `<p>${esc(text)}</p><div class="row"><button class="primary tour-go">Start walkthrough</button>` +
+      '<button class="plain tour-cancel">Cancel</button></div></div>';
+    box().querySelector(".tour-go").onclick = guard(start);
+    box().querySelector(".tour-cancel").onclick = () => (was >= 0 ? go(was) : close());
   }
   function welcome() {
     // First visit only: offer the walkthrough. Nothing has been changed yet, so starting it
