@@ -857,25 +857,13 @@ const tour = (() => {
       if (await popup("Start the walkthrough?", text, "Start walkthrough")) await start();
     }));
     const saved = store.get();
+    // No automatic pop-up: visitors start it from the Walkthrough button.
     if (saved && saved.step >= 0) {
-      if (await stale(saved.step)) { welcome(); return; }
-      i = saved.step; draw(); return;
+      if (await stale(saved.step)) { store.set({ step: -1, seen: true }); return; }
+      i = saved.step; draw();
     }
-    if (!saved) welcome();
   }
-  function welcome() {
-    // First visit only: offer the walkthrough. Nothing has been changed yet, so starting it
-    // needs no warning about the reset.
-    store.set({ step: -1, seen: true });
-    box().hidden = false; box().classList.add("welcome");
-    box().innerHTML = '<div class="tour-card"><div class="tour-head"><b>First time here?</b></div>' +
-      "<p>This is a working demo of two HR systems kept in sync: Workday, where people's records live, and Ethena, which assigns training. " +
-      "A short walkthrough shows what it does, about three minutes.</p>" +
-      '<div class="row"><button class="primary tour-go">Show me around</button><button class="plain tour-x">No thanks, I\'ll explore</button></div>' +
-      '<p class="muted tour-later">You can start it any time with the Walkthrough button at the top.</p></div>';
-    box().querySelector(".tour-go").onclick = guard(start);
-    box().querySelector(".tour-x").onclick = close;
-  }
+
   return { init, saw, stop: () => { if (i >= 0) close(); } };
 })();
 
