@@ -339,8 +339,10 @@ function shortDate(iso) {
   return d.length === 3 ? `${MONTHS[+d[1] - 1]} ${+d[2]}` : "";
 }
 function pills(l) {
-  return (l.enrollments || []).map((e) => {
-    const cls = isDone(e) ? "done" : isRemoved(e) ? "done" : isLate(e) ? "late" : "";
+  // Removed courses go last, so what a person has now reads first.
+  const list = [...(l.enrollments || [])].sort((a, b) => isRemoved(a) - isRemoved(b));
+  return list.map((e) => {
+    const cls = isDone(e) ? "done" : isRemoved(e) ? "gone" : isLate(e) ? "late" : "";
     const when = isDone(e) ? "completed" : isRemoved(e) ? "removed" : isLate(e) ? `overdue since ${shortDate(e.deadline)}` : `due ${shortDate(e.deadline)}`;
     return `<span class="tpill ${cls}">${esc(e.campaignName)}<em>${esc(when)}</em></span>`;
   }).join(" ") || '<span class="muted">none</span>';
@@ -769,20 +771,25 @@ const tour = (() => {
     { tab: "sync", title: "Press [[warn:Demo a bad day]]", spot: "#sy-bad", wait: "badday",
       body: "It drops a typical busy week into Workday: promotions, moves, someone leaving, new hires, and one person with two Ethena accounts. None of it has reached Ethena yet." },
     { tab: "sync", title: "Look at one person in both systems",
-      body: `Grace Lindqvist was promoted to Engineering Manager. ${open("workday", "Grace Lindqvist")}See Grace in Workday</a>, then ${open("ethena", "Grace Lindqvist")}in Ethena</a>: Ethena still has Grace down as not a manager, so none of the manager training is assigned.` },
+      body: `Grace Lindqvist was promoted from Warehouse Associate to Warehouse Supervisor, a manager role. ${open("workday", "Grace Lindqvist")}See Grace in Workday</a>, then ${open("ethena", "Grace Lindqvist")}in Ethena</a>: Ethena still has Grace down as not a manager, so none of the manager training is assigned.` },
     { tab: "sync", title: "Press [[run:Run sync]]", spot: "#sy-run", wait: "run",
       body: "The sync reads every change in Workday and writes it to Ethena. Most of the mess is fixed in one click, and each fix gets a plain sentence under What the last run did. A few things it will not guess at; those go to manual review." },
     { tab: "sync", title: "Tell the sync where Vancouver is", spot: 'tr[data-office="Vancouver, BC"]', wait: "rule", check: async () => {
         const r = await api("api/rules"); const v = r.offices.find((o) => o.office === "Vancouver, BC");
         return v && v.country === "CAN" && v.region === "BC"; },
-      body: "Liam Moreau moved to the Vancouver office, which the sync has never seen. It cannot know which province that is, so it stopped. In the highlighted row, set Country to Canada and Province or state to British Columbia." },
+      nudge: async () => {
+        const v = (await api("api/rules")).offices.find((o) => o.office === "Vancouver, BC");
+        const p = $("tour").querySelector(".muted");
+        if (v && v.region && v.region !== "BC" && p) p.textContent = "Saved, but Vancouver is in British Columbia. Pick British Columbia to move on.";
+      },
+      body: "A few people moved to the new Vancouver office, which the sync has never seen. It cannot know which province that is, so it stopped and asked. In the highlighted row, set Country to Canada and Province or state to British Columbia." },
     { tab: "sync", title: "Press [[run:Run sync]] again", spot: "#sy-run", wait: "run", check: async () =>
         !(await api("api/queue")).some((q) => String(q.reason).startsWith("UNKNOWN")),
-      body: "Now the sync knows where Vancouver is, so it tells Ethena that Liam is in British Columbia. The Vancouver item leaves manual review on its own." },
+      body: "Now the sync knows where Vancouver is, so it tells Ethena those people are in British Columbia. The Vancouver item leaves manual review on its own." },
     { tab: "sync", title: "Pick the real account", spot: "#sy-queue", wait: "resolve", check: async () => (await api("api/state")).open_queue === 0,
       body: "One item is left: two Ethena accounts share one email, and a computer should not guess which is the real person. Pick an account and press [[plain:Use this account]]." },
     { tab: "ethena", title: "See what Ethena did",
-      body: `${open("ethena", "Grace Lindqvist")}Grace</a> now has the manager courses, and ${open("ethena", "Liam Moreau")}Liam</a> has the British Columbia course. The sync never chose a course. It sent the facts, and Ethena decided the training from its own <a href="#ethena/courses">course settings</a>.` },
+      body: `${open("ethena", "Grace Lindqvist")}Grace</a> now has the manager courses in place of the employee ones, and the Vancouver people have the British Columbia course. The sync never chose a course. It sent the facts, and Ethena decided the training from its own <a href="#ethena/courses">course settings</a>.` },
     { tab: "sync", title: "That's the whole job",
       body: "Without this, someone copies every hire, promotion and move from Workday into Ethena by hand, and mistakes show up as missed training. Here it runs in one click, it is safe to run again, it stops and asks when it should not guess, and every change it made is recorded under Look up a person." },
   ];
@@ -833,7 +840,7 @@ const tour = (() => {
     // A step with a check moves on whenever its check holds, whatever was clicked; one
     // without a check waits for its own action.
     if (!st || !st.wait) return;
-    if (st.check ? !(await st.check()) : st.wait !== what) return;
+    if (st.check ? !(await st.check()) : st.wait !== what) { if (st.nudge) await st.nudge(); return; }
     go(i + 1);
   }
   async function stale(step) {

@@ -14,6 +14,8 @@ LAST_NAMES = ["Tremblay", "Nguyen", "Okafor", "Silva", "Kowalski", "Haddad", "Pa
 
 
 PROMOTED_PROFILE = "Sales_Team_Lead"
+NEXT_STEP = {"Sales_Rep": "Sales_Team_Lead", "Software_Engineer": "Engineering_Manager",
+             "Warehouse_Associate": "Warehouse_Supervisor"}
 DUP_WORKER = "W-1042"  # ethena.seed puts this worker's email on two learners
 VANCOUVER = "Vancouver, BC"  # not in the rules table; nobody starts there
 N_VANCOUVER = 2  # quiet movers on the bad day, besides the Transfer
@@ -23,6 +25,11 @@ def _location(rng, loc_rng, others):
     """The main stream draws as before; a Vancouver draw is swapped for another location."""
     loc = rng.choice(LOCATIONS)
     return loc if loc != VANCOUVER else loc_rng.choice(others)
+
+
+def _senior(rows, wid) -> str:
+    """A title change that fits the job: "Senior Finance Analyst", not a random title."""
+    return "Senior " + profile_descriptor(next(r[6] for r in rows if r[0] == wid))
 
 
 def _generate(n_workers=100, rng_seed=7):
@@ -55,16 +62,22 @@ def _generate(n_workers=100, rng_seed=7):
         (promoted, "Promotion", {"job_profile": PROMOTED_PROFILE}),
         (ids[1], "Transfer", {"location": VANCOUVER}),
         (ids[2], "Termination", {}),
-        (DUP_WORKER, "Data_Change", {"business_title": "Senior Associate"}),
+        (DUP_WORKER, "Data_Change", {"business_title": _senior(rows, DUP_WORKER)}),
     ]
     for wid in ids[3:10]:
         reason = rng.choice(["Promotion", "Transfer", "Data_Change"])
         if reason == "Promotion":
-            plans.append((wid, reason, {"job_profile": rng.choice(JOB_PROFILES)}))
+            rng.choice(JOB_PROFILES)  # kept so later random picks stay the same
+            current = next(r[6] for r in rows if r[0] == wid)
+            if current in NEXT_STEP:  # a promotion is the next step up, not a random job
+                plans.append((wid, reason, {"job_profile": NEXT_STEP[current]}))
+            else:
+                plans.append((wid, "Data_Change", {"business_title": _senior(rows, wid)}))
         elif reason == "Transfer":
             plans.append((wid, reason, {"location": rng.choice(others)}))
         else:
-            plans.append((wid, reason, {"business_title": f"Senior {rng.choice(['Associate', 'Specialist'])}"}))
+            rng.choice(['Associate', 'Specialist'])  # kept so later random picks stay the same
+            plans.append((wid, reason, {"business_title": _senior(rows, wid)}))
     out = []
     for i, (wid, reason, fields) in enumerate(plans):
         completed = now - timedelta(days=29 - i * 2.4)

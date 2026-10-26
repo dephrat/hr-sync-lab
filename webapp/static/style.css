@@ -291,3 +291,5 @@ tr.tour-spot td { background: #fff4d6 !important; }
 #modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
 #modal[hidden] { display: none; }
 #modal .tour-card { max-width: 480px; margin: 16px; padding: 18px 22px; border-left-width: 1px; }
+.tpill.gone { background: #f1f1f1; color: #888; text-decoration: line-through; }
+.tpill.gone em { text-decoration: none; }
