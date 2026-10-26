@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from hris.db import (JOB_PROFILES, LOCATIONS, PROFILE_DEPARTMENT,
                      apply_job_change, connect, is_manager_profile, profile_descriptor)
 
-FIRST_NAMES = ["Ava", "Liam", "Noah", "Emma", "Olivia", "Ethan", "Mia", "Lucas", "Sofia",
+FIRST_NAMES = ["Ava", "Liam", "Noah", "Emma", "Olivia", "Grace", "Mia", "Lucas", "Sofia",
                "Mason", "Chloe", "Logan", "Zoe", "Owen", "Nora", "Caleb", "Ruby", "Isaac",
                "Hana", "Marcus"]
 LAST_NAMES = ["Tremblay", "Nguyen", "Okafor", "Silva", "Kowalski", "Haddad", "Patel",
