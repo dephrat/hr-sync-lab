@@ -756,7 +756,8 @@ const tour = (() => {
         const r = await api("api/rules"); const v = r.offices.find((o) => o.office === "Vancouver, BC");
         return v && v.country === "CAN" && v.region === "BC"; },
       body: "Liam Moreau moved to the Vancouver office, which the sync has never seen. It cannot know which province that is, so it stopped. In the highlighted row, set Country to Canada and Province or state to British Columbia." },
-    { tab: "sync", title: "Press [[run:Run sync]] again", spot: "#sy-run", wait: "run",
+    { tab: "sync", title: "Press [[run:Run sync]] again", spot: "#sy-run", wait: "run", check: async () =>
+        !(await api("api/queue")).some((q) => String(q.reason).startsWith("UNKNOWN")),
       body: "Now the sync knows where Vancouver is, so it tells Ethena that Liam is in British Columbia. The Vancouver item leaves manual review on its own." },
     { tab: "sync", title: "Pick the real account", spot: "#sy-queue", wait: "resolve", check: async () => (await api("api/state")).open_queue === 0,
       body: "One item is left: two Ethena accounts share one email, and a computer should not guess which is the real person. Pick an account and press [[plain:Use this account]]." },
@@ -774,16 +775,16 @@ const tour = (() => {
     const s = on && STEPS[i] && STEPS[i].spot && document.querySelector(STEPS[i].spot);
     if (s) { s.classList.add("tour-spot"); s.scrollIntoView({ block: "center", behavior: "smooth" }); }
   }
-  function draw() {
+  function draw(revisit = false) {
     const st = STEPS[i], last = i === STEPS.length - 1;
     box().hidden = false; box().classList.remove("welcome");
     box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${chips(esc(st.title))}</b>` +
       `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${chips(st.body)}</p>` +
       `<div class="row">${i > 0 ? '<button class="plain tour-back">Back</button>' : ""}` +
-      (st.wait ? '<span class="muted">This moves on by itself when you do it.</span>'
+      (st.wait && !revisit ? '<span class="muted">This moves on by itself when you do it.</span>'
         : `<button class="primary tour-next">${last ? "Finish" : "Next"}</button>`) + "</div></div>";
     box().querySelector(".tour-x").onclick = close;
-    const back = box().querySelector(".tour-back"); if (back) back.onclick = () => go(i - 1);
+    const back = box().querySelector(".tour-back"); if (back) back.onclick = () => go(i - 1, true);
     const next = box().querySelector(".tour-next"); if (next) next.onclick = () => (last ? close() : go(i + 1));
     box().querySelectorAll("a[data-look]").forEach((a) => a.addEventListener("click", (ev) => {
       ev.preventDefault(); look(a.dataset.look, a.dataset.q); }));
@@ -797,8 +798,9 @@ const tour = (() => {
     if (current() === tab) { input.dispatchEvent(new Event("input")); return; }
     location.hash = tab;
   }
-  async function go(n) {
-    i = n; store.set({ step: i, seen: true }); draw();
+  async function go(n, stay = false) {
+    i = n; store.set({ step: i, seen: true }); draw(stay);
+    if (stay) return;  // Back shows the earlier step even if it is already done
     const st = STEPS[i];  // already done (say, by clicking ahead): move straight on
     if (st && st.wait && st.check && (await st.check()) && i === n) go(i + 1);
   }
@@ -810,8 +812,10 @@ const tour = (() => {
   }
   async function saw(what) {
     const st = STEPS[i];
-    if (!st || st.wait !== what) return;
-    if (st.check && !(await st.check())) return;
+    // A step with a check moves on whenever its check holds, whatever was clicked; one
+    // without a check waits for its own action.
+    if (!st || !st.wait) return;
+    if (st.check ? !(await st.check()) : st.wait !== what) return;
     go(i + 1);
   }
   function init() {
