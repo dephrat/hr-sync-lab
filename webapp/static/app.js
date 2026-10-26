@@ -758,7 +758,8 @@ function popup(title, text, ok) {
 // every step lands on the same people. Steps that ask you to do something tick themselves
 // off when you do it; steps that only ask you to look have a Next button.
 const tour = (() => {
-  const KEY = "hrsync-tour";
+  // Saved per copy of the demo (the path), so a personal link starts fresh in the same browser.
+  const KEY = "hrsync-tour:" + location.pathname;
   const store = { get() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } },
     set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
   const open = (tab, q) => `<a href="#${tab}" data-look="${tab}" data-q="${esc(q)}">`;
