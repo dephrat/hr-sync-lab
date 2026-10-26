@@ -569,7 +569,11 @@ async function badDay() {
   btn.disabled = true; btn.classList.add("busy");
   try {
     const r = await api("api/bad_day", { method: "POST" });
-    if (r.already) { toast("The bad day is already here. Reset demo for a clean start."); return; }
+    if (r.already) {
+      if (!(await popup("The bad day already happened", "To see it again, reset the demo to a fresh copy and start a new bad day. Anything you changed here is lost.", "Reset and start a new bad day"))) return;
+      await resetData(); tour.stop(); route();
+      return badDay();
+    }
     toast("A bad day just happened. Open the Sync tab to see what is out of sync.");
     await route(); // refresh whichever tab is showing
     await refreshCards();
@@ -734,6 +738,21 @@ async function renderReport() {
   }).join("");
 }
 
+// ---------- Pop-up ----------
+// One centred pop-up for anything that changes the whole demo. Resolves true on the main button.
+function popup(title, text, ok) {
+  return new Promise((done) => {
+    const m = $("modal");
+    m.innerHTML = `<div class="tour-card"><div class="tour-head"><b>${esc(title)}</b></div><p>${esc(text)}</p>` +
+      `<div class="row"><button class="primary pop-ok">${esc(ok)}</button><button class="plain pop-no">Cancel</button></div></div>`;
+    m.hidden = false;
+    const end = (v) => { m.hidden = true; m.innerHTML = ""; done(v); };
+    m.querySelector(".pop-ok").onclick = () => end(true);
+    m.querySelector(".pop-no").onclick = () => end(false);
+    m.querySelector(".pop-ok").focus();
+  });
+}
+
 // ---------- Walkthrough ----------
 // A short guided story pinned under the top bar. It resets this copy of the demo first, so
 // every step lands on the same people. Steps that ask you to do something tick themselves
@@ -817,23 +836,14 @@ const tour = (() => {
     go(i + 1);
   }
   function init() {
-    $("tour-open").addEventListener("click", () => ask(i >= 0
-      ? "Start the walkthrough again from step 1? This resets the demo to a fresh copy."
-      : "The walkthrough starts from a fresh copy of the demo, so anything you changed here is reset."));
+    $("tour-open").addEventListener("click", guard(async () => {
+      const text = i >= 0 ? "It starts again from step 1, on a fresh copy of the demo. Anything you changed here is lost."
+        : "It starts from a fresh copy of the demo. Anything you changed here is lost.";
+      if (await popup("Start the walkthrough?", text, "Start walkthrough")) await start();
+    }));
     const saved = store.get();
     if (saved && saved.step >= 0) { i = saved.step; draw(); return; }
     if (!saved) welcome();
-  }
-  function ask(text) {
-    // The same centred pop-up as the welcome, used before anything that resets the demo.
-    const was = i;
-    spot(false);
-    box().hidden = false; box().classList.add("welcome");
-    box().innerHTML = '<div class="tour-card"><div class="tour-head"><b>Start the walkthrough?</b></div>' +
-      `<p>${esc(text)}</p><div class="row"><button class="primary tour-go">Start walkthrough</button>` +
-      '<button class="plain tour-cancel">Cancel</button></div></div>';
-    box().querySelector(".tour-go").onclick = guard(start);
-    box().querySelector(".tour-cancel").onclick = () => (was >= 0 ? go(was) : close());
   }
   function welcome() {
     // First visit only: offer the walkthrough. Nothing has been changed yet, so starting it
@@ -848,7 +858,7 @@ const tour = (() => {
     box().querySelector(".tour-go").onclick = guard(start);
     box().querySelector(".tour-x").onclick = close;
   }
-  return { init, saw };
+  return { init, saw, stop: () => { if (i >= 0) close(); } };
 })();
 
 // ---------- Routing, reset, wiring ----------
@@ -862,7 +872,8 @@ function route() {
   guard(RENDER[t])();
 }
 async function reset() {
-  if (!confirm("Reset the demo? All three databases are reseeded.")) return;
+  if (!(await popup("Reset the demo?", "Workday, Ethena and the sync all go back to a fresh copy where everything matches. Anything you changed here is lost.", "Reset demo"))) return;
+  tour.stop();
   const r = await resetData();
   toast(`Demo reset: ${r.workers} workers, ${r.learners} learners, ${r.changes} job changes.`);
   route();
