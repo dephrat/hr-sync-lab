@@ -836,14 +836,24 @@ const tour = (() => {
     if (st.check ? !(await st.check()) : st.wait !== what) return;
     go(i + 1);
   }
-  function init() {
+  async function stale(step) {
+    // Saved progress past the bad day, but this copy is fresh (no sync ever, nothing out of
+    // sync): the demo was reset outside the walkthrough, so the saved step no longer applies.
+    if (step < 2) return false;
+    const [st, dr] = await Promise.all([api("api/state"), api("api/drift")]);
+    return !st.last_run && !dr.items.length;
+  }
+  async function init() {
     $("tour-open").addEventListener("click", guard(async () => {
       const text = i >= 0 ? "It starts again from step 1, on a fresh copy of the demo. Anything you changed here is lost."
         : "It starts from a fresh copy of the demo. Anything you changed here is lost.";
       if (await popup("Start the walkthrough?", text, "Start walkthrough")) await start();
     }));
     const saved = store.get();
-    if (saved && saved.step >= 0) { i = saved.step; draw(); return; }
+    if (saved && saved.step >= 0) {
+      if (await stale(saved.step)) { welcome(); return; }
+      i = saved.step; draw(); return;
+    }
     if (!saved) welcome();
   }
   function welcome() {
@@ -900,7 +910,7 @@ $("sy-q").addEventListener("input", debounce(guard(searchPeople)));
 $("rp-refresh").addEventListener("click", guard(renderReport));
 initHire();
 route();
-tour.init();
+guard(tour.init)();
 
 async function refreshCards() {
   if (cur.learner) await showLearner(cur.learner);
