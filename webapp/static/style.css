@@ -285,3 +285,6 @@ tr.tour-spot td { background: #fff4d6 !important; }
 .tour-later { margin: 8px 0 0; font-size: 12px; }
 #tour.welcome { top: 0; bottom: 0; max-width: none; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); pointer-events: auto; }
 #tour.welcome .tour-card { max-width: 480px; margin: 16px; padding: 18px 22px; border-left-width: 1px; }
+.btnref { display: inline-block; padding: 0 8px; border-radius: 4px; border: 1px solid #bbb; background: #fff; color: #333; font-weight: 600; white-space: nowrap; }
+.btnref.warn { background: #b26a00; border-color: #b26a00; color: #fff; }
+.btnref.run { background: #24292e; border-color: #24292e; color: #fff; }

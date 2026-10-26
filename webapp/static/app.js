@@ -746,26 +746,28 @@ const tour = (() => {
   const STEPS = [
     { tab: "sync", title: "Everything matches",
       body: "This is the sync between Workday, where HR keeps people's records, and Ethena, which hands out training. Right now the two agree: nobody is out of sync. Next, you will make a mess." },
-    { tab: "sync", title: "Press Demo a bad day", spot: "#sy-bad", wait: "badday",
+    { tab: "sync", title: "Press [[warn:Demo a bad day]]", spot: "#sy-bad", wait: "badday",
       body: "It drops a typical busy week into Workday: promotions, moves, someone leaving, new hires, and one person with two Ethena accounts. None of it has reached Ethena yet." },
     { tab: "sync", title: "Look at one person in both systems",
       body: `Ethan Lindqvist was promoted to Engineering Manager. ${open("workday", "Ethan Lindqvist")}See him in Workday</a>, then ${open("ethena", "Ethan Lindqvist")}in Ethena</a>: Ethena still thinks he is not a manager, so he has none of the manager training.` },
-    { tab: "sync", title: "Press Run sync", spot: "#sy-run", wait: "run",
+    { tab: "sync", title: "Press [[run:Run sync]]", spot: "#sy-run", wait: "run",
       body: "The sync reads every change in Workday and writes it to Ethena. Most of the mess is fixed in one click, and each fix gets a plain sentence under What the last run did. A few things it will not guess at; those go to manual review." },
     { tab: "sync", title: "Tell the sync where Vancouver is", spot: 'tr[data-office="Vancouver, BC"]', wait: "rule", check: async () => {
         const r = await api("api/rules"); const v = r.offices.find((o) => o.office === "Vancouver, BC");
         return v && v.country === "CAN" && v.region === "BC"; },
       body: "Liam Moreau moved to the Vancouver office, which the sync has never seen. It cannot know which province that is, so it stopped. In the highlighted row, set Country to Canada and Province or state to British Columbia." },
-    { tab: "sync", title: "Run sync again", spot: "#sy-run", wait: "run",
+    { tab: "sync", title: "Press [[run:Run sync]] again", spot: "#sy-run", wait: "run",
       body: "Now the sync knows where Vancouver is, so it tells Ethena that Liam is in British Columbia. The Vancouver item leaves manual review on its own." },
     { tab: "sync", title: "Pick the real account", spot: "#sy-queue", wait: "resolve", check: async () => (await api("api/state")).open_queue === 0,
-      body: "One item is left: two Ethena accounts share one email, and a computer should not guess which is the real person. Pick an account and press Use this account." },
+      body: "One item is left: two Ethena accounts share one email, and a computer should not guess which is the real person. Pick an account and press [[plain:Use this account]]." },
     { tab: "ethena", title: "See what Ethena did",
       body: `${open("ethena", "Ethan Lindqvist")}Ethan</a> now has the manager courses, and ${open("ethena", "Liam Moreau")}Liam</a> has the British Columbia course. The sync never chose a course. It sent the facts, and Ethena decided the training from its own <a href="#ethena/courses">course settings</a>.` },
     { tab: "sync", title: "That's the whole job",
       body: "Without this, someone copies every hire, promotion and move from Workday into Ethena by hand, and mistakes show up as missed training. Here it runs in one click, it is safe to run again, it stops and asks when it should not guess, and every change it made is recorded under Look up a person." },
   ];
   let i = -1;
+  // [[kind:Label]] in a title or body draws the label like the button it names.
+  const chips = (t) => t.replace(/\[\[(warn|run|plain):([^\]]+)\]\]/g, '<span class="btnref $1">$2</span>');
   const box = () => $("tour");
   function spot(on) {
     document.querySelectorAll(".tour-spot").forEach((e) => e.classList.remove("tour-spot"));
@@ -775,8 +777,8 @@ const tour = (() => {
   function draw() {
     const st = STEPS[i], last = i === STEPS.length - 1;
     box().hidden = false; box().classList.remove("welcome");
-    box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${esc(st.title)}</b>` +
-      `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${st.body}</p>` +
+    box().innerHTML = `<div class="tour-card"><div class="tour-head"><b>Step ${i + 1} of ${STEPS.length}: ${chips(esc(st.title))}</b>` +
+      `<button class="plain tour-x" aria-label="Close walkthrough">Close</button></div><p>${chips(st.body)}</p>` +
       `<div class="row">${i > 0 ? '<button class="plain tour-back">Back</button>' : ""}` +
       (st.wait ? '<span class="muted">This moves on by itself when you do it.</span>'
         : `<button class="primary tour-next">${last ? "Finish" : "Next"}</button>`) + "</div></div>";
